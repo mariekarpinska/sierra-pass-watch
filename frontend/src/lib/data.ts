@@ -73,6 +73,7 @@ export interface Route {
   path: LatLng[]
   miles: number[]
   totalMiles: number
+  estDriveMinutes: number
 }
 
 export interface Forecast {
@@ -244,6 +245,10 @@ export function weatherFor(town: Town, dayIdx: number): Forecast {
 }
 
 /* ---------- route computation ---------- */
+// Drive-time model: corridor average speed plus a fixed dwell per waypoint.
+const AVG_MPH = 42
+const MINUTES_PER_STOP = 3
+
 export function computeRoute(startIdx: number, endIdx: number): Route {
   const lo = Math.min(startIdx, endIdx)
   const hi = Math.max(startIdx, endIdx)
@@ -264,7 +269,8 @@ export function computeRoute(startIdx: number, endIdx: number): Route {
     }
     miles.push(total)
   }
-  return { startIdx, endIdx, order, path, miles, totalMiles: total }
+  const estDriveMinutes = Math.round((total / AVG_MPH) * 60 + order.length * MINUTES_PER_STOP)
+  return { startIdx, endIdx, order, path, miles, totalMiles: total, estDriveMinutes }
 }
 
 /* mile marker at a town in the route */

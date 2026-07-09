@@ -44,7 +44,7 @@ export function RouteOverview({ route }: Props) {
     ['Distance', `${Math.round(route.totalMiles)} mi`],
     ['Waypoints', `${route.order.length} stops`],
     ['High point', `${peak.toLocaleString()} ft`],
-    ['Est. drive', `${Math.round((route.totalMiles / 42) * 60 + route.order.length * 3)} min`],
+    ['Est. drive', `${route.estDriveMinutes} min`],
   ]
 
   return (
