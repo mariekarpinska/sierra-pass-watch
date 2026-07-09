@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { computeRoute, type Route } from './lib/data'
 import { Nav } from './components/Nav'
 import { Hero } from './components/Hero'
@@ -19,11 +19,15 @@ export function App() {
   const planRoute = useCallback((startIdx: number, endIdx: number) => {
     setRoute(computeRoute(startIdx, endIdx))
     setDayIdx(0)
-    // scroll to results once they exist in the DOM
-    window.requestAnimationFrame(() => {
-      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
   }, [])
+
+  // Scroll to the results after they render. Keying on `route` runs this once
+  // the commit that mounts the results div has attached the ref — unlike a
+  // requestAnimationFrame after setState, it doesn't depend on frame timing.
+  // computeRoute returns a fresh object each plan, so re-planning re-scrolls.
+  useEffect(() => {
+    if (route) resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [route])
 
   return (
     <>
