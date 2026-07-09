@@ -23,20 +23,27 @@ interface Options {
   add the tile layer, and on each dependency change swap in a fresh LayerGroup
   for `draw` to render into. Returns the ref to attach to the map container.
 
-  invalidateSize runs on a short timeout because the container is often still
-  being laid out (reveal animation / flex sizing) on first paint; see finding #4
-  for the ResizeObserver follow-up that would remove the magic delay.
+  A ResizeObserver keeps Leaflet's cached container size correct: Leaflet
+  measures the container only at creation, so if it isn't laid out yet (reveal
+  animation / flex sizing) the map renders at the wrong size. The observer calls
+  invalidateSize() when the container's size actually settles — and on any later
+  resize — instead of guessing with a fixed timeout.
 */
 export function useLeafletMap({ mapOptions, deps, draw }: Options) {
   const mapEl = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
 
   useEffect(() => {
     if (!mapEl.current) return
     if (!mapRef.current) {
-      mapRef.current = L.map(mapEl.current, mapOptions)
-      L.tileLayer(TILE_URL, TILE_OPTS).addTo(mapRef.current)
+      const map = L.map(mapEl.current, mapOptions)
+      L.tileLayer(TILE_URL, TILE_OPTS).addTo(map)
+      mapRef.current = map
+      // Fires once after the container is laid out, then on every resize.
+      observerRef.current = new ResizeObserver(() => map.invalidateSize())
+      observerRef.current.observe(mapEl.current)
     }
     const map = mapRef.current
     layerRef.current?.remove()
@@ -44,9 +51,6 @@ export function useLeafletMap({ mapOptions, deps, draw }: Options) {
     layerRef.current = layer
 
     draw(layer, map)
-
-    const id = window.setTimeout(() => map.invalidateSize(), 200)
-    return () => window.clearTimeout(id)
     // deps is a stable-length array supplied by the caller; mapOptions/draw are
     // read fresh each run and intentionally excluded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,6 +59,8 @@ export function useLeafletMap({ mapOptions, deps, draw }: Options) {
   // tear the map down only on unmount
   useEffect(
     () => () => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
       mapRef.current?.remove()
       mapRef.current = null
     },

@@ -75,9 +75,10 @@ describe("App — backend health round-trip", () => {
 
 describe("App — Sierra Pass Watch mockup", () => {
   beforeEach(() => {
-    // jsdom implements neither scrollIntoView (App calls it after planning) nor
-    // IntersectionObserver (useReveal drives scroll-reveal animations). Stub
-    // both so the route sections mount; neither is what these tests verify.
+    // jsdom implements none of scrollIntoView (App calls it after planning),
+    // IntersectionObserver (useReveal drives scroll-reveal animations), or
+    // ResizeObserver (useLeafletMap re-measures the map container). Stub all
+    // three so the route sections mount; none is what these tests verify.
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal(
       "IntersectionObserver",
@@ -86,6 +87,14 @@ describe("App — Sierra Pass Watch mockup", () => {
         unobserve = vi.fn();
         disconnect = vi.fn();
         takeRecords = vi.fn(() => []);
+      },
+    );
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
       },
     );
     // Keep the footer's health call pending so it never updates state during
