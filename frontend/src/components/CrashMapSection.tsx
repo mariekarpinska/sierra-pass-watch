@@ -1,14 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import L from 'leaflet'
 import { DAY_LABELS, routeIncidents, type Route, type RouteIncident, type Cause } from '../lib/data'
 import { useReveal } from '../lib/useReveal'
-
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const TILE_OPTS: L.TileLayerOptions = {
-  attribution: '&copy; OpenStreetMap &copy; CARTO',
-  subdomains: 'abcd',
-  maxZoom: 16,
-}
+import { useLeafletMap } from '../lib/useLeafletMap'
 
 interface Props {
   route: Route
@@ -23,75 +17,54 @@ interface Cluster {
 
 export function CrashMapSection({ route, dayIdx }: Props) {
   const sectionRef = useReveal<HTMLElement>(route)
-  const mapEl = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<L.Map | null>(null)
-  const layerRef = useRef<L.LayerGroup | null>(null)
-
   const { cond, similar, list } = useMemo(() => routeIncidents(route, dayIdx), [route, dayIdx])
 
-  useEffect(() => {
-    if (!mapEl.current) return
-    if (!mapRef.current) {
-      mapRef.current = L.map(mapEl.current, { scrollWheelZoom: false }).setView([38.78, -120.4], 9)
-      L.tileLayer(TILE_URL, TILE_OPTS).addTo(mapRef.current)
-    }
-    const map = mapRef.current
-    layerRef.current?.remove()
-    const layer = L.layerGroup().addTo(map)
-    layerRef.current = layer
+  const mapEl = useLeafletMap({
+    mapOptions: { scrollWheelZoom: false, center: [38.78, -120.4], zoom: 9 },
+    deps: [route, list],
+    draw: (layer, map) => {
+      // route line, faint underneath
+      L.polyline(route.path, { color: '#9DB183', weight: 3, opacity: 0.4 }).addTo(layer)
 
-    // route line, faint underneath
-    L.polyline(route.path, { color: '#9DB183', weight: 3, opacity: 0.4 }).addTo(layer)
-
-    // cluster incidents by rounded coordinate to size markers by density
-    const clusters = new Map<string, Cluster>()
-    list.forEach((inc) => {
-      const key = `${inc.lat.toFixed(2)},${inc.lng.toFixed(2)}`
-      const c = clusters.get(key) ?? { lat: 0, lng: 0, items: [] }
-      c.items.push(inc)
-      clusters.set(key, c)
-    })
-    clusters.forEach((c) => {
-      const n = c.items.length
-      const lat = c.items.reduce((s, i) => s + i.lat, 0) / n
-      const lng = c.items.reduce((s, i) => s + i.lng, 0) / n
-      const radius = 7 + Math.min(26, Math.sqrt(n) * 7)
-      // calm: muted sage, size = density. no red.
-      const m = L.circleMarker([lat, lng], {
-        radius,
-        color: '#C3D3A9',
-        weight: 1.5,
-        fillColor: '#9DB183',
-        fillOpacity: Math.min(0.55, 0.26 + n * 0.05),
-        opacity: 0.7,
+      // cluster incidents by rounded coordinate to size markers by density
+      const clusters = new Map<string, Cluster>()
+      list.forEach((inc) => {
+        const key = `${inc.lat.toFixed(2)},${inc.lng.toFixed(2)}`
+        const c = clusters.get(key) ?? { lat: 0, lng: 0, items: [] }
+        c.items.push(inc)
+        clusters.set(key, c)
       })
-      const causeTally = new Map<Cause, number>()
-      c.items.forEach((i) => causeTally.set(i.cause, (causeTally.get(i.cause) ?? 0) + 1))
-      const topCause = [...causeTally.entries()].sort((a, b) => b[1] - a[1])[0][0]
-      const miles = c.items.map((i) => i.mile)
-      const years = c.items.map((i) => i.year)
-      m.bindPopup(
-        `<span class="pop-h">${n} incident${n > 1 ? 's' : ''} in similar weather</span>
-        <div class="pop-row"><span>Mile range</span><b>${Math.min(...miles)}–${Math.max(...miles)}</b></div>
-        <div class="pop-row"><span>Most common</span><b>${topCause}</b></div>
-        <div class="pop-row"><span>Years</span><b>${Math.min(...years)}–${Math.max(...years)}</b></div>`,
-      )
-      m.addTo(layer)
-    })
+      clusters.forEach((c) => {
+        const n = c.items.length
+        const lat = c.items.reduce((s, i) => s + i.lat, 0) / n
+        const lng = c.items.reduce((s, i) => s + i.lng, 0) / n
+        const radius = 7 + Math.min(26, Math.sqrt(n) * 7)
+        // calm: muted sage, size = density. no red.
+        const m = L.circleMarker([lat, lng], {
+          radius,
+          color: '#C3D3A9',
+          weight: 1.5,
+          fillColor: '#9DB183',
+          fillOpacity: Math.min(0.55, 0.26 + n * 0.05),
+          opacity: 0.7,
+        })
+        const causeTally = new Map<Cause, number>()
+        c.items.forEach((i) => causeTally.set(i.cause, (causeTally.get(i.cause) ?? 0) + 1))
+        const topCause = [...causeTally.entries()].sort((a, b) => b[1] - a[1])[0][0]
+        const miles = c.items.map((i) => i.mile)
+        const years = c.items.map((i) => i.year)
+        m.bindPopup(
+          `<span class="pop-h">${n} incident${n > 1 ? 's' : ''} in similar weather</span>
+          <div class="pop-row"><span>Mile range</span><b>${Math.min(...miles)}–${Math.max(...miles)}</b></div>
+          <div class="pop-row"><span>Most common</span><b>${topCause}</b></div>
+          <div class="pop-row"><span>Years</span><b>${Math.min(...years)}–${Math.max(...years)}</b></div>`,
+        )
+        m.addTo(layer)
+      })
 
-    map.fitBounds(L.polyline(route.path).getBounds().pad(0.2))
-    const id = window.setTimeout(() => map.invalidateSize(), 200)
-    return () => window.clearTimeout(id)
-  }, [route, list])
-
-  // tear the map down only on unmount
-  useEffect(
-    () => () => {
-      mapRef.current?.remove()
-      mapRef.current = null
+      map.fitBounds(L.polyline(route.path).getBounds().pad(0.2))
     },
-    [],
-  )
+  })
 
   return (
     <section className="crashmap" ref={sectionRef}>
