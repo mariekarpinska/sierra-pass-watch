@@ -1,68 +1,50 @@
-import { useEffect, useState } from "react";
-import { getHealth, type HealthResponse } from "./api/health";
-import { isAppError } from "./api/client";
-import "./App.css";
+import { useCallback, useRef, useState } from 'react'
+import { computeRoute, type Route } from './lib/data'
+import { Nav } from './components/Nav'
+import { Hero } from './components/Hero'
+import { Planner } from './components/Planner'
+import { RouteOverview } from './components/RouteOverview'
+import { AlertBanner } from './components/AlertBanner'
+import { WeatherSection } from './components/WeatherSection'
+import { InsightSection } from './components/InsightSection'
+import { CrashMapSection } from './components/CrashMapSection'
+import { MuirQuote } from './components/MuirQuote'
+import { Footer, DisclaimerPill } from './components/Footer'
 
-/**
- * Boilerplate landing page: proves the frontend ↔ backend plumbing by calling
- * GET /api/health through the interceptor layer (src/api/client.ts) and
- * rendering the result. Replace this page when building a real feature.
- */
-type HealthState =
-  | { phase: "loading" }
-  | { phase: "ok"; health: HealthResponse }
-  | { phase: "error"; message: string };
+export function App() {
+  const [route, setRoute] = useState<Route | null>(null)
+  const [dayIdx, setDayIdx] = useState(0)
+  const resultsRef = useRef<HTMLDivElement | null>(null)
 
-function App() {
-  const [state, setState] = useState<HealthState>({ phase: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    getHealth()
-      .then((health) => {
-        if (!cancelled) setState({ phase: "ok", health });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setState({
-            phase: "error",
-            // The interceptor guarantees failures are AppError, but we keep a
-            // defensive fallback so the page can never crash on an odd throw.
-            message: isAppError(err) ? err.message : "Unexpected error.",
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const planRoute = useCallback((startIdx: number, endIdx: number) => {
+    setRoute(computeRoute(startIdx, endIdx))
+    setDayIdx(0)
+    // scroll to results once they exist in the DOM
+    window.requestAnimationFrame(() => {
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
 
   return (
-    <main className="page">
-      <h1>Full-stack boilerplate</h1>
-      <p>React + TypeScript frontend · ASP.NET Core backend</p>
-
-      <section className="card" aria-live="polite">
-        <h2>Backend health</h2>
-        {state.phase === "loading" && <p>Checking…</p>}
-        {state.phase === "ok" && (
-          <dl>
-            <dt>Status</dt>
-            <dd data-testid="health-status">{state.health.status}</dd>
-            <dt>Service</dt>
-            <dd>{state.health.service}</dd>
-            <dt>Server time (UTC)</dt>
-            <dd>{state.health.timestampUtc}</dd>
-          </dl>
+    <>
+      <div className="grain" aria-hidden="true" />
+      <Nav />
+      <Hero />
+      <main>
+        <Planner onPlan={planRoute} />
+        {route && (
+          <div className="results" ref={resultsRef}>
+            <RouteOverview route={route} />
+            <AlertBanner route={route} />
+            <WeatherSection route={route} dayIdx={dayIdx} onDayChange={setDayIdx} />
+            <InsightSection route={route} dayIdx={dayIdx} />
+            <CrashMapSection route={route} dayIdx={dayIdx} />
+          </div>
         )}
-        {state.phase === "error" && (
-          <p role="alert" data-testid="health-error">
-            {state.message}
-          </p>
-        )}
-      </section>
-    </main>
-  );
+        <MuirQuote />
+      </main>
+      <Footer />
+      {route && <DisclaimerPill />}
+    </>
+  )
 }
-
-export default App;

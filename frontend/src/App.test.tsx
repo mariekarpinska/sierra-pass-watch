@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import App from "./App";
+import { App } from "./App";
 import * as healthApi from "./api/health";
 
 vi.mock("./api/health", { spy: true });
