@@ -1,0 +1,14 @@
+# .gitattributes tells Git how to treat specific paths — here it enforces
+# consistent line endings and correct text/binary handling across environments.
+# Without it, contributors on Windows (CRLF) and macOS/Linux (LF) would
+# produce noisy, platform-dependent diffs and risk corrupting binary files.
+
+# Normalize all text files to LF in the repository; working-tree line
+# endings follow each contributor's platform defaults.
+* text=auto
+
+# Never touch binary assets.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

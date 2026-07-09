@@ -1,0 +1,62 @@
+# Secrets / local config
+.env
+*.local
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# dbt / warehouse — generated/downloaded; ignore contents but keep the
+# explainer README in target/ (a dir-level ignore can't be negated per-file,
+# so ignore the contents with /* and re-include the README).
+warehouse/target/*
+!warehouse/target/README.md
+warehouse/dbt_packages/
+warehouse/logs/
+
+# Downloaded data
+data/ccrs/
+
+# Terraform — provider binaries & local state are large/machine-specific.
+# Track config (*.tf) and the lock file; ignore everything else.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# IDE / OS
+.vs/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.user
+Thumbs.db
+.DS_Store
+
+# Logs & scratch
+logs/
+*.log
+tmp/
+SierraPlan.txt

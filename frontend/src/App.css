@@ -1,0 +1,26 @@
+.page {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+}
+
+.card {
+  margin-top: 2rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+}
+
+.card dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+
+.card dt {
+  font-weight: 600;
+}
+
+.card dd {
+  margin: 0;
+}
