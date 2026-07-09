@@ -1,11 +1,18 @@
 export function Hero() {
   return (
     <section className="hero" id="top">
-      {/* Sierra Nevada dawn photograph */}
+      {/* Sierra Nevada dawn photograph. This is the LCP element, so it loads
+          eagerly at high priority (no lazy-loading). width/height declare the
+          3:2 aspect ratio up front so the browser reserves space and the layout
+          doesn't shift when the image arrives. */}
       <div className="hero-scene" aria-hidden="true">
         <img
           className="hero-photo"
-          src="/pexels-stephen-leonardi-587681991-28639333.jpg"
+          src="/hero.webp"
+          width={1920}
+          height={1280}
+          fetchPriority="high"
+          decoding="async"
           alt=""
         />
         <div className="hero-overlay" />
