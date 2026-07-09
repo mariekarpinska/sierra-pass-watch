@@ -1,3 +1,5 @@
+import { BackendStatus } from './BackendStatus'
+
 export function Footer() {
   return (
     <footer className="footer" id="disclaimer">
@@ -30,6 +32,7 @@ export function Footer() {
       </div>
       <div className="footer-bottom">
         <span>© 2026 Sierra Pass Watch</span>
+        <BackendStatus />
         <span>Research &amp; awareness tool · not for navigation</span>
       </div>
     </footer>

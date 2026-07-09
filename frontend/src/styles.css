@@ -322,6 +322,13 @@ section{ position:relative; }
 .disclaimer-scope{ margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--line); color:var(--ink-soft); }
 .footer-bottom{ max-width:min(1100px,92vw); margin:2.5rem auto 0; padding:1.4rem clamp(1rem,4vw,3rem) 0; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; font-family:var(--mono); font-size:.72rem; letter-spacing:.06em; color:var(--granite); }
 
+/* backend service indicator (footer) — one live call through the axios layer */
+.backend-status{ display:inline-flex; align-items:center; gap:.45rem; }
+.backend-status .dot{ width:8px; height:8px; box-shadow:0 0 0 2px rgba(0,0,0,.25); }
+.dot-idle{ background:var(--granite); }
+.dot-ok{ background:var(--sage); }
+.dot-down{ background:var(--clay); }
+
 /* persistent disclaimer pill */
 .disclaimer-pill{ position:fixed; bottom:1rem; left:50%; transform:translateX(-50%) translateY(0); z-index:400; display:flex; align-items:center; gap:.55rem; padding:.5rem .9rem; background:#0E120C; color:var(--ink); border:1px solid var(--line); border-radius:100px; box-shadow:var(--shadow-md); font-size:.78rem; animation:pillin .5s ease both; }
 @keyframes pillin{ from{ opacity:0; transform:translateX(-50%) translateY(20px);} to{ opacity:1; transform:translateX(-50%) translateY(0);} }
