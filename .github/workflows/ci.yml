@@ -88,7 +88,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install dbt-postgres
+      # Pin the major so a future dbt-postgres release can't silently break CI.
+      - run: pip install "dbt-postgres>=1.9,<2.0"
       # Bronze DDL first (the pipeline owns these tables), then the fixture.
       - run: psql -h localhost -U app -d app -f pipeline/db/schema.sql
       - run: psql -h localhost -U app -d app -f warehouse/ci/fixtures.sql
