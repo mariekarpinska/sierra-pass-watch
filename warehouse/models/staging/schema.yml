@@ -1,0 +1,94 @@
+version: 2
+
+models:
+  - name: stg_road_events
+    description: Bronze road events, unfiltered - one row per (waypoint, timestamp).
+    columns:
+      - name: segment_id
+        tests: [not_null]
+      - name: weather_regime
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: &regimes
+                  - HEAVY_SNOW_LOW_VIS
+                  - SNOW
+                  - ICE_FREEZING
+                  - HIGH_WIND
+                  - RAIN_FOG_LOW_VIS
+                  - CLEAR_DRY
+                  - UNKNOWN
+
+  - name: stg_crashes
+    description: Crash reports with primary_factor normalized into the cause taxonomy and a per-mile bin.
+    columns:
+      - name: case_id
+        tests: [not_null, unique]
+      - name: primary_factor
+        description: Normalized cause label - the vocabulary the UI's cautions key on.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Unsafe Speed
+                  - Unsafe Turn / No Signal
+                  - Unsafe Lane Change
+                  - DUI
+                  - Red Light Violation
+                  - Failure to Yield (Entering Hwy)
+                  - Failure to Yield (Stop Sign)
+                  - Failure to Yield (Left Turn)
+                  - Failure to Yield (Intersection)
+                  - Following Too Closely
+                  - Unsafe Start from Stopped
+                  - Unsafe Passing
+                  - Wrong Side of Road
+                  - Stop Sign Violation
+                  - Unsafe Backing
+                  - Unknown
+                  - Other
+      - name: weather_regime
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: *regimes
+
+  - name: stg_alerts
+    description: Bronze alerts, unfiltered - one row per change event.
+    columns:
+      - name: alert_id
+        tests: [not_null, unique]
+      - name: kind
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [CHAIN_CONTROL, INCIDENT]
+
+seeds:
+  - name: segments
+    description: >
+      The route catalogue, exported from pipeline/routes.build_segments. A
+      pipeline test (test_warehouse_seeds.py) asserts this CSV equals the
+      catalogue, so it cannot silently drift from the code that ingests the
+      data. Used as anchors: the weather-sensor join and the human labels.
+    columns:
+      - name: segment_id
+        tests: [not_null, unique]
+      - name: route_id
+        tests: [not_null]
+
+  - name: route_lengths
+    description: >
+      Per-route polyline length in miles, exported from
+      shared/route-polylines.json. The denominator for the per-mile crash
+      average in mart_hotspots (ADR-0007). The same pipeline test asserts it
+      matches the committed geometry.
+    columns:
+      - name: route_id
+        tests: [not_null, unique]
+      - name: length_miles
+        tests: [not_null]
