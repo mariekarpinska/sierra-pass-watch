@@ -62,3 +62,35 @@ alter table crashes add column if not exists measure_mi double precision;
 
 create index if not exists idx_road_events_route on raw_road_events (route_id, event_timestamp);
 create index if not exists idx_crashes_route_regime on crashes (route_id, weather_regime);
+
+-- Alerts (feat/near-realtime-alerts): push-worthy road-state CHANGES, not readings.
+-- One row per change (chains up/down, or a new CHP incident on a route).
+-- alert_id is the idempotency key, so a re-emitted alert only ever no-ops,
+-- exactly like (segment_id, event_timestamp) does for raw_road_events.
+create table if not exists alerts (
+    alert_id     text primary key,        -- "cc:I-80:CC Donner:R2:<ts>" | "chp:241001"
+    kind         text             not null,  -- 'CHAIN_CONTROL' | 'INCIDENT'
+    category     text,                       -- STARTED/ESCALATED/EASED/LIFTED | COLLISION/HAZARD/CLOSURE/OTHER
+    route_id     text,                       -- tracked route, if attributable
+    segment_id   text,                       -- nearest catalogue waypoint, if any
+    headline     text             not null,  -- one line, ready to show or notify
+    detail       text,
+    lat          double precision,
+    lon          double precision,
+    measure_mi   double precision,           -- distance-along-route (incidents only)
+    event_time   timestamptz      not null,  -- when it happened upstream (UTC)
+    source       text             not null,  -- 'caltrans' | 'chp'
+    ingested_at  timestamptz      not null default now()
+);
+
+create index if not exists idx_alerts_route_time on alerts (route_id, event_time desc);
+
+-- Last-known state the alert producer diffs against to detect a CHANGE. One row
+-- per tracked chain-control location, and per recently-seen CHP incident id.
+-- The producer rewrites this table each cycle from pipeline/alerts.derive_alerts,
+-- which drops incident keys past a TTL so it can't grow without bound.
+create table if not exists road_alert_state (
+    state_key    text primary key,          -- "cc:I-80:CC Donner" | "chp:241001"
+    state_value  text        not null,       -- last-seen status, or first-seen timestamp
+    updated_at   timestamptz not null default now()
+);

@@ -74,3 +74,50 @@ def insert_crashes(conn: psycopg.Connection, crashes: list[dict]) -> int:
     with conn.cursor() as cur:
         cur.executemany(_CRASH_SQL, rows)
         return cur.rowcount if cur.rowcount >= 0 else 0
+
+
+# --- alerts (feat/near-realtime-alerts) -----------------------------------------
+
+ALERT_COLUMNS = (
+    "alert_id", "kind", "category", "route_id", "segment_id", "headline",
+    "detail", "lat", "lon", "measure_mi", "event_time", "source",
+)
+
+_ALERT_SQL = (
+    f"insert into alerts ({', '.join(ALERT_COLUMNS)}) "
+    f"values ({', '.join('%s' for _ in ALERT_COLUMNS)}) "
+    "on conflict (alert_id) do nothing"
+)
+
+
+def insert_alerts(conn: psycopg.Connection, alerts: list[dict]) -> int:
+    """Insert alert rows; existing alert_ids no-op. Returns rows inserted."""
+    if not alerts:
+        return 0
+    rows = [tuple(a.get(col) for col in ALERT_COLUMNS) for a in alerts]
+    with conn.cursor() as cur:
+        cur.executemany(_ALERT_SQL, rows)
+        return cur.rowcount if cur.rowcount >= 0 else 0
+
+
+def load_alert_state(conn: psycopg.Connection) -> dict:
+    """The alert producer's last-known state (key → value), for change detection."""
+    with conn.cursor() as cur:
+        cur.execute("select state_key, state_value from road_alert_state")
+        return {key: value for key, value in cur.fetchall()}
+
+
+def save_alert_state(conn: psycopg.Connection, state: dict) -> None:
+    """Replace the state table with ``state``. Caller commits.
+
+    A wholesale replace is fine at this volume (dozens of rows) and keeps the
+    write trivially correct: whatever derive_alerts returns IS the new state,
+    including the TTL-pruned incident keys. Caller commits after this returns.
+    """
+    with conn.cursor() as cur:
+        cur.execute("delete from road_alert_state")
+        if state:
+            cur.executemany(
+                "insert into road_alert_state (state_key, state_value) values (%s, %s)",
+                list(state.items()),
+            )
