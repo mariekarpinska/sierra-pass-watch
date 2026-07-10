@@ -59,6 +59,25 @@ class TestOpenMeteo:
         if current.get("visibility") is not None:
             assert reading.visibility_miles == current["visibility"] * 0.000621371
 
+    def test_parse_current_batch_wraps_single_and_maps_list(self, fixture_json) -> None:
+        one = fixture_json("openmeteo_sample.json")
+        assert len(openmeteo.parse_current_batch(one)) == 1       # bare object -> 1
+        assert len(openmeteo.parse_current_batch([one, one])) == 2  # array -> one each
+
+    @responses.activate
+    def test_fetch_current_batch_parses_array_in_order(self) -> None:
+        responses.get(
+            openmeteo.CURRENT_URL,
+            json=[
+                {"current": {"time": "t0", "wind_gusts_10m": 10.0}},
+                {"current": {"time": "t1", "wind_gusts_10m": 80.0}},
+            ],
+        )
+        readings = openmeteo.fetch_current_batch([(39.3, -120.3), (38.8, -120.0)])
+        assert len(readings) == 2
+        assert readings[0].wind_gust_mph == 10.0 * 0.621371
+        assert readings[1].wind_gust_mph == 80.0 * 0.621371
+
     @responses.activate
     def test_fetch_archive_hours_shapes_rows(self) -> None:
         responses.get(

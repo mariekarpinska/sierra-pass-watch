@@ -1,8 +1,9 @@
 """Open-Meteo — keyless weather, current conditions and hourly history.
 
-Two endpoints, one shape: ``fetch_current`` feeds the live producer,
-``fetch_archive_hours`` feeds the backfill. Both convert to the pipeline's
-units (inches/hr, miles, mph, °C) at the edge so nothing downstream converts.
+Two endpoints, one shape: ``fetch_current_batch`` feeds the live producer (all
+waypoints in one request), ``fetch_archive_hours`` feeds the backfill. Both
+convert to the pipeline's units (inches/hr, miles, mph, °C) at the edge so
+nothing downstream converts.
 """
 from __future__ import annotations
 
@@ -55,18 +56,32 @@ def parse_current(payload: dict) -> WeatherReading:
     )
 
 
-def fetch_current(lat: float, lon: float) -> WeatherReading:
-    """Current conditions at one waypoint."""
+def parse_current_batch(payload) -> list[WeatherReading]:
+    """Parse a multi-coordinate /v1/forecast payload into readings.
+
+    Open-Meteo returns a JSON array (one entry per coordinate, in request order)
+    for comma-separated coordinates, and a bare object for a single one — which
+    we wrap, so callers always get a list.
+    """
+    entries = payload if isinstance(payload, list) else [payload]
+    return [parse_current(entry) for entry in entries]
+
+
+def fetch_current_batch(points: list[tuple[float, float]]) -> list[WeatherReading]:
+    """Current conditions for many waypoints in ONE request, order preserved.
+
+    Comma-separated coordinates collapse ~57 sequential GETs into a single call.
+    """
     payload = get_json(
         CURRENT_URL,
         params={
-            "latitude": lat,
-            "longitude": lon,
+            "latitude": ",".join(f"{lat}" for lat, _ in points),
+            "longitude": ",".join(f"{lon}" for _, lon in points),
             "current": "temperature_2m,snowfall,wind_gusts_10m,visibility",
             "wind_speed_unit": "kmh",
         },
     )
-    return parse_current(payload)
+    return parse_current_batch(payload)
 
 
 def fetch_archive_hours(lat: float, lon: float, start: date, end: date) -> list[WeatherReading]:

@@ -138,14 +138,30 @@ def _fetch_all(dry_run: bool):
         chain_controls = cwwp2.fetch_chain_control()
         rwis_readings = cwwp2.fetch_rwis()
         quakes = usgs.fetch_events()
-        weather_by_segment = {}
-        for s in SEGMENTS:
-            try:
-                weather_by_segment[s["segment_id"]] = openmeteo.fetch_current(s["lat"], s["lon"])
-            except Exception as exc:  # noqa: BLE001 — one waypoint failing shouldn't stop the sweep
-                log.warning("open-meteo failed: segment=%s error=%s", s["segment_id"], exc)
-                weather_by_segment[s["segment_id"]] = None
+        weather_by_segment = _fetch_weather()
     return chain_controls, rwis_readings, quakes, weather_by_segment
+
+
+def _fetch_weather() -> dict:
+    """Every waypoint's current weather in ONE batched Open-Meteo call.
+
+    On any failure (or an unexpected response length) all waypoints get None and
+    the poll continues: build_event still emits, and missing gusts fall back to
+    NWS per waypoint. The trade-off vs. per-waypoint fetching is granularity —
+    one batch failure nulls everything — but Open-Meteo is a single endpoint, so
+    a failure is usually total regardless.
+    """
+    try:
+        readings = openmeteo.fetch_current_batch([(s["lat"], s["lon"]) for s in SEGMENTS])
+    except Exception as exc:  # noqa: BLE001 — a failed batch must not stop the poll
+        log.warning("open-meteo batch failed: %s", exc)
+        readings = []
+    if len(readings) != len(SEGMENTS):
+        if readings:
+            log.warning("open-meteo returned %d readings for %d segments; discarding batch",
+                        len(readings), len(SEGMENTS))
+        return {s["segment_id"]: None for s in SEGMENTS}
+    return {s["segment_id"]: reading for s, reading in zip(SEGMENTS, readings)}
 
 
 def poll_once(kafka_producer=None, dry_run: bool = False) -> list[dict]:
