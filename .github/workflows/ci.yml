@@ -55,3 +55,43 @@ jobs:
       # Contract tests hit real upstream APIs — informational, never block CI.
       - run: pytest -m network
         continue-on-error: true
+
+  warehouse:
+    # Proves dbt builds the marts end to end: apply the bronze schema, load a
+    # tiny fixture, then `dbt build` (seed + run + test) against real Postgres.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app_dev_password
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # dbt profiles.yml and the psql calls read these; they match the
+      # docker-compose defaults so local and CI behave identically.
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_dev_password
+      POSTGRES_DB: app
+      PGPASSWORD: app_dev_password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install dbt-postgres
+      # Bronze DDL first (the pipeline owns these tables), then the fixture.
+      - run: psql -h localhost -U app -d app -f pipeline/db/schema.sql
+      - run: psql -h localhost -U app -d app -f warehouse/ci/fixtures.sql
+      - name: dbt build
+        working-directory: warehouse
+        run: dbt build --profiles-dir .
