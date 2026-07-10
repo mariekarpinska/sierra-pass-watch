@@ -92,8 +92,9 @@ def derive_chain_alerts(prev_state: dict, chain_controls: list, now: str) -> tup
         if seg is None:  # not on a catalogue route
             continue
         key = f"cc:{seg['route_id']}:{cc.location_name}"
+        prev = prev_state.get(key, "None")
         state[key] = status
-        category = _chain_transition(prev_state.get(key, "None"), status)
+        category = _chain_transition(prev, status)
         if category is None:
             continue
         where = f"{seg['route_id']} near {seg['segment_name']}"
@@ -105,7 +106,14 @@ def derive_chain_alerts(prev_state: dict, chain_controls: list, now: str) -> tup
         }[category]
         alerts.append(
             Alert(
-                alert_id=f"cc:{seg['route_id']}:{cc.location_name}:{status}:{now}",
+                # Deterministic id — identifies the transition, not the poll.
+                # A crash-replay or Kafka redelivery re-derives the same
+                # prev->status and so the same id, which the consumer's
+                # ON CONFLICT (alert_id) DO NOTHING dedups (no duplicate row).
+                # The incident id chp:{id} is stable the same way. Trade-off:
+                # an identical transition that genuinely recurs (chains lift,
+                # then re-form to the same level) collapses to one alerts row.
+                alert_id=f"cc:{seg['route_id']}:{cc.location_name}:{prev}->{status}",
                 kind="CHAIN_CONTROL",
                 category=category,
                 route_id=seg["route_id"],
