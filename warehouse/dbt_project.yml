@@ -1,11 +1,11 @@
-# Sierra Corridor warehouse - dbt over the Postgres bronze layer.
+# Sierra Safe warehouse - dbt over the Postgres bronze layer.
 # The pipeline (consumer + backfill) lands raw rows; dbt turns them into the
 # query-shaped marts the FastAPI backend serves.
 #
 #   cd warehouse && dbt build --profiles-dir .
-name: sierra_corridor
+name: sierra_safe
 version: "1.0.0"
-profile: sierra_corridor
+profile: sierra_safe
 
 model-paths: ["models"]
 seed-paths: ["seeds"]
@@ -16,7 +16,7 @@ target-path: target
 clean-targets: [target, dbt_packages]
 
 models:
-  sierra_corridor:
+  sierra_safe:
     staging:
       # Staging is a thin, always-fresh lens over bronze. Views cost nothing at
       # this volume and never go stale between runs.
@@ -27,7 +27,7 @@ models:
       +materialized: table
 
 seeds:
-  sierra_corridor:
+  sierra_safe:
     segments:
       # The route catalogue (pipeline/routes.build_segments) exported to CSV.
       # A pipeline test (test_warehouse_seeds.py) asserts the two stay
