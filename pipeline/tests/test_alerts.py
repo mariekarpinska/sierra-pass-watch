@@ -4,7 +4,7 @@ from pipeline.sources.cwwp2 import ChainControl
 
 DONNER = (39.3163, -120.3208)  # I-80 : Donner Summit waypoint
 NOW = "2026-07-09T21:00:00+00:00"
-CC_KEY = "cc:I-80:CC Donner"
+CC_KEY = "cc:I-80:39.3163,-120.3208"  # station identified by route + coords
 
 
 def _cc(status: str) -> ChainControl:
@@ -51,6 +51,25 @@ def test_chain_lifted():
 def test_chain_unchanged_emits_nothing():
     alerts, _ = derive_chain_alerts({CC_KEY: "R2"}, [_cc("R2")], NOW)
     assert alerts == []
+
+
+def test_station_missing_one_poll_is_not_re_announced():
+    # R2 seen, then the station drops out of one poll (a district fetch gap),
+    # then returns unchanged. It must carry its state forward and NOT re-alert.
+    _, after_seen = derive_chain_alerts({}, [_cc("R2")], NOW)
+    _, after_gap = derive_chain_alerts(after_seen, [], NOW)   # feed gap: absent
+    assert after_gap.get(CC_KEY) == "R2"                       # state preserved
+    alerts, _ = derive_chain_alerts(after_gap, [_cc("R2")], NOW)
+    assert alerts == []                                        # no false STARTED
+
+
+def test_blank_named_stations_on_one_route_do_not_collide():
+    # Two distinct I-80 stations, both with blank names — must not share a key.
+    donner = ChainControl(location_name="", route="I-80", lat=39.3163, lon=-120.3208, status="R2")
+    truckee = ChainControl(location_name="", route="I-80", lat=39.3280, lon=-120.1833, status="R1")
+    alerts, state = derive_chain_alerts({}, [donner, truckee], NOW)
+    assert len(alerts) == 2
+    assert len([k for k in state if k.startswith("cc:")]) == 2
 
 
 # --- CHP incidents -------------------------------------------------------------

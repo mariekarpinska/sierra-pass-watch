@@ -85,13 +85,20 @@ def _chain_transition(prev: str, now: str) -> str | None:
 def derive_chain_alerts(prev_state: dict, chain_controls: list, now: str) -> tuple[list[Alert], dict]:
     """Chain-control transitions since last poll. ``chain_controls`` are cwwp2.ChainControl."""
     alerts: list[Alert] = []
-    state: dict[str, str] = {}
+    # Carry forward the last-known status of stations NOT seen this poll: a
+    # station briefly missing from the feed (a district fetch failed) must not
+    # be re-announced as a fresh STARTED when it returns unchanged. A real lift
+    # arrives as the station present with status "None", not as a disappearance.
+    state: dict[str, str] = {k: v for k, v in prev_state.items() if k.startswith("cc:")}
     for cc in chain_controls:
         status = cc.status if cc.status in _CHAIN_RANK else "None"
         seg = _nearest_segment(cc.lat, cc.lon)
         if seg is None:  # not on a catalogue route
             continue
-        key = f"cc:{seg['route_id']}:{cc.location_name}"
+        # Identify a station by route + coordinates, not location_name (which
+        # cwwp2 can leave blank — two blank-named controls would otherwise
+        # collide on one key and overwrite each other's status).
+        key = f"cc:{seg['route_id']}:{round(cc.lat, 4)},{round(cc.lon, 4)}"
         prev = prev_state.get(key, "None")
         state[key] = status
         category = _chain_transition(prev, status)
@@ -113,7 +120,7 @@ def derive_chain_alerts(prev_state: dict, chain_controls: list, now: str) -> tup
                 # The incident id chp:{id} is stable the same way. Trade-off:
                 # an identical transition that genuinely recurs (chains lift,
                 # then re-form to the same level) collapses to one alerts row.
-                alert_id=f"cc:{seg['route_id']}:{cc.location_name}:{prev}->{status}",
+                alert_id=f"{key}:{prev}->{status}",
                 kind="CHAIN_CONTROL",
                 category=category,
                 route_id=seg["route_id"],
