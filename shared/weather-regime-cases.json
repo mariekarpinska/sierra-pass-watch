@@ -1,0 +1,112 @@
+{
+  "description": "Golden contract for the weather-regime classifier (pipeline/regime.py — one implementation: it labels live readings and historical backfill in the pipeline, and the API imports it to label the live forecast). Both the pipeline and API test suites assert every case in this file, so any behaviour change must consciously update this spec. Inputs may be null (sensors go offline); a case's 'expected' is the regime code. Rules are evaluated worst-first; docs/weather-regimes.md explains each threshold's provenance.",
+  "inputFields": {
+    "snowfallRateInHr": "inches per hour, from Open-Meteo",
+    "visibilityMiles": "miles, from RWIS or Open-Meteo",
+    "windGustMph": "mph, from RWIS, NWS or Open-Meteo",
+    "surfaceTempC": "road surface °C, from RWIS (air temp proxy in forecasts)",
+    "chainControl": "Caltrans chain control status: null, R1, R2 or R3"
+  },
+  "cases": [
+    {
+      "name": "all inputs null → UNKNOWN",
+      "input": { "snowfallRateInHr": null, "visibilityMiles": null, "windGustMph": null, "surfaceTempC": null, "chainControl": null },
+      "expected": "UNKNOWN"
+    },
+    {
+      "name": "benign readings → CLEAR_DRY",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 10.0, "windGustMph": 8.0, "surfaceTempC": 12.0, "chainControl": null },
+      "expected": "CLEAR_DRY"
+    },
+    {
+      "name": "single benign reading, rest offline → CLEAR_DRY (known data is benign)",
+      "input": { "snowfallRateInHr": null, "visibilityMiles": null, "windGustMph": 10.0, "surfaceTempC": null, "chainControl": null },
+      "expected": "CLEAR_DRY"
+    },
+    {
+      "name": "heavy snowfall with low visibility → HEAVY_SNOW_LOW_VIS",
+      "input": { "snowfallRateInHr": 0.8, "visibilityMiles": 0.25, "windGustMph": 20.0, "surfaceTempC": -2.0, "chainControl": "R2" },
+      "expected": "HEAVY_SNOW_LOW_VIS"
+    },
+    {
+      "name": "boundary: snowfall exactly 0.5 and visibility just under 0.5 → HEAVY_SNOW_LOW_VIS",
+      "input": { "snowfallRateInHr": 0.5, "visibilityMiles": 0.49, "windGustMph": null, "surfaceTempC": null, "chainControl": null },
+      "expected": "HEAVY_SNOW_LOW_VIS"
+    },
+    {
+      "name": "boundary: heavy snowfall but visibility exactly 0.5 → SNOW (not heavy)",
+      "input": { "snowfallRateInHr": 0.9, "visibilityMiles": 0.5, "windGustMph": null, "surfaceTempC": null, "chainControl": null },
+      "expected": "SNOW"
+    },
+    {
+      "name": "light active snowfall → SNOW",
+      "input": { "snowfallRateInHr": 0.1, "visibilityMiles": 5.0, "windGustMph": 10.0, "surfaceTempC": -1.0, "chainControl": null },
+      "expected": "SNOW"
+    },
+    {
+      "name": "boundary: trace snowfall under 0.1 with benign rest → CLEAR_DRY",
+      "input": { "snowfallRateInHr": 0.05, "visibilityMiles": 9.0, "windGustMph": 5.0, "surfaceTempC": 3.0, "chainControl": null },
+      "expected": "CLEAR_DRY"
+    },
+    {
+      "name": "chain control R1 means snow on the road even if sensors read dry → SNOW",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 8.0, "windGustMph": 12.0, "surfaceTempC": 1.0, "chainControl": "R1" },
+      "expected": "SNOW"
+    },
+    {
+      "name": "chain control R3 → SNOW",
+      "input": { "snowfallRateInHr": null, "visibilityMiles": null, "windGustMph": null, "surfaceTempC": null, "chainControl": "R3" },
+      "expected": "SNOW"
+    },
+    {
+      "name": "cold road surface below black-ice threshold → ICE_FREEZING",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 7.0, "windGustMph": 15.0, "surfaceTempC": -5.0, "chainControl": null },
+      "expected": "ICE_FREEZING"
+    },
+    {
+      "name": "boundary: surface exactly -4 °C is not yet the ice regime → CLEAR_DRY",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 8.0, "windGustMph": 10.0, "surfaceTempC": -4.0, "chainControl": null },
+      "expected": "CLEAR_DRY"
+    },
+    {
+      "name": "snow outranks ice: snowing onto a frozen road → SNOW",
+      "input": { "snowfallRateInHr": 0.2, "visibilityMiles": 4.0, "windGustMph": 10.0, "surfaceTempC": -8.0, "chainControl": null },
+      "expected": "SNOW"
+    },
+    {
+      "name": "gusts above 40 mph → HIGH_WIND",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 9.0, "windGustMph": 47.0, "surfaceTempC": 6.0, "chainControl": null },
+      "expected": "HIGH_WIND"
+    },
+    {
+      "name": "boundary: gusts exactly 40 mph → CLEAR_DRY (threshold is strict)",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 9.0, "windGustMph": 40.0, "surfaceTempC": 6.0, "chainControl": null },
+      "expected": "CLEAR_DRY"
+    },
+    {
+      "name": "ice outranks wind: frozen road in a gale → ICE_FREEZING",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 6.0, "windGustMph": 55.0, "surfaceTempC": -6.0, "chainControl": null },
+      "expected": "ICE_FREEZING"
+    },
+    {
+      "name": "low visibility without snow (fog or rain) → RAIN_FOG_LOW_VIS",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 0.8, "windGustMph": 10.0, "surfaceTempC": 8.0, "chainControl": null },
+      "expected": "RAIN_FOG_LOW_VIS"
+    },
+    {
+      "name": "boundary: visibility exactly 1 mile → CLEAR_DRY",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 1.0, "windGustMph": 10.0, "surfaceTempC": 8.0, "chainControl": null },
+      "expected": "CLEAR_DRY"
+    },
+    {
+      "name": "wind outranks fog: gale with mist → HIGH_WIND",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 0.9, "windGustMph": 44.0, "surfaceTempC": 9.0, "chainControl": null },
+      "expected": "HIGH_WIND"
+    },
+    {
+      "name": "unrecognized chain control value is ignored → CLEAR_DRY",
+      "input": { "snowfallRateInHr": 0.0, "visibilityMiles": 9.0, "windGustMph": 5.0, "surfaceTempC": 10.0, "chainControl": "None" },
+      "expected": "CLEAR_DRY"
+    }
+  ]
+}
