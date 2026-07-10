@@ -71,9 +71,11 @@ values
     ('ci-16', '2026-01-09 09:40:00+00', 39.3140, -120.3100, 'I-80', 'WB', 'Injury',
      'Rear End', 'UNSAFE LANE CHANGE', 'Other Motor Vehicle', 'I-80 WESTBOUND',
      'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 46.50),
-    -- Sensor-window case: report says CLEAR, but the 06:30 heavy-snow reading
-    -- at Donner Summit is within 2 h -> regime_source must be 'sensor' (SNOW),
-    -- and it lands in the same bin 44.
+    -- Sensor-window case: report says CLEAR, but two Donner Summit readings are
+    -- within 2 h (05:30 SNOW, 06:30 HEAVY_SNOW_LOW_VIS). The latest wins, so
+    -- regime_source = 'sensor' and weather_regime = HEAVY_SNOW_LOW_VIS. It sits
+    -- in bin 44 but as its own (I-80, 44, HEAVY_SNOW_LOW_VIS) group, not part of
+    -- the 8-crash SNOW cluster.
     ('ci-9', '2026-01-10 07:15:00+00', 39.3160, -120.3210, 'I-80', 'EB', 'Injury',
      'Rear End', 'UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
      'Dusk - Dawn', 'Saturday', 'CLEAR', 'Dry', 'CLEAR_DRY', 1, 0, 44.05),
