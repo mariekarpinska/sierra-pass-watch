@@ -31,8 +31,12 @@ One coordinate for the crash side of the product: **distance-along-route
   `pipeline/geo.py`), and SQL only ever sees a number.
 - The **per-mile bin** — `floor(measure_mi)` — is the native crash grain the
   later marts (hotspots, cause taxonomies) will key on. A bin flags as a
-  hotspot when it holds ≥ 1.5× its route's per-mile average under a regime
-  AND ≥ 8 crashes.
+  hotspot when it holds ≥ 1.5× the per-mile average of its route's
+  crash-bearing span (first to last occupied bin) under a regime AND ≥ 8
+  crashes. The average is taken over that active span, not the full route
+  length: Sierra passes are mostly empty approach miles, and averaging over the
+  whole road drives the per-mile average near zero so that every populated bin
+  looks extreme.
 - Towns are **anchors, not catchments**: labelled points at known measures,
   used for journey spans, forecast sampling and human labels ("≈2 mi E of
   Kirkwood"). Everything downstream derives from the same committed file.

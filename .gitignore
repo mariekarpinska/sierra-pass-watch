@@ -27,6 +27,8 @@ warehouse/target/*
 !warehouse/target/README.md
 warehouse/dbt_packages/
 warehouse/logs/
+# dbt's anonymous-usage id: machine-local, not project source.
+warehouse/.user.yml
 
 # Downloaded data
 data/ccrs/

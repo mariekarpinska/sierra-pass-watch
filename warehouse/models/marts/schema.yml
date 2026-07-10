@@ -1,0 +1,102 @@
+version: 2
+
+models:
+  - name: mart_crash_conditions
+    description: >
+      One row per crash: nearest anchor town, per-mile bin, and the regime it
+      happened in (sensor reading within 2 h when available, else the report's
+      own text - regime_source says which).
+    columns:
+      - name: case_id
+        tests: [not_null, unique]
+      - name: segment_id
+        tests: [not_null]
+      - name: weather_regime
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ var('regimes') }}"
+      - name: regime_source
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [sensor, report]
+
+  - name: mart_crash_patterns
+    description: >
+      The record per (route x per-mile bin x regime) - counts, dates, fatality
+      share, small-sample flag. Grain uniqueness is checked by a singular test
+      (tests/assert_crash_patterns_unique_grain.sql).
+    columns:
+      - name: crash_count
+        tests: [not_null]
+      - name: pct_fatal
+        tests: [not_null]
+      - name: weather_regime
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ var('regimes') }}"
+
+  - name: mart_pattern_causes
+    description: >
+      Top three recorded causes per (route x per-mile bin x regime), ranked.
+      Grain uniqueness is checked by a singular test
+      (tests/assert_pattern_causes_unique_grain.sql).
+    columns:
+      - name: cause
+        tests: [not_null]
+      - name: cause_rank
+        tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3]
+                quote: false
+
+  - name: mart_hotspots
+    description: >
+      Every occupied (route x per-mile bin x regime) with crash concentration
+      vs the route's per-mile average. Grain uniqueness is checked by a singular
+      test (tests/assert_hotspots_unique_grain.sql).
+    columns:
+      - name: weather_regime
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ var('regimes') }}"
+      - name: concentration_ratio
+        tests: [not_null]
+      - name: is_hotspot
+        tests: [not_null]
+
+  - name: mart_route_crashes
+    description: Crash-point detail per route, for the map.
+    columns:
+      - name: case_id
+        tests: [not_null, unique]
+      - name: route_id
+        tests: [not_null]
+
+  - name: mart_active_alerts
+    description: >
+      Near-real-time alert feed (view, not table, so it stays live between dbt
+      runs): recent chain-control transitions and CHP incidents, newest first.
+    columns:
+      - name: alert_id
+        tests: [not_null, unique]
+      - name: kind
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [CHAIN_CONTROL, INCIDENT]
+      - name: severity_rank
+        tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false

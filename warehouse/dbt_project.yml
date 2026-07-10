@@ -1,0 +1,63 @@
+# Sierra Safe warehouse - dbt over the Postgres bronze layer.
+# The pipeline (consumer + backfill) lands raw rows; dbt turns them into the
+# query-shaped marts the FastAPI backend serves.
+#
+#   cd warehouse && dbt build --profiles-dir .
+name: sierra_safe
+version: "1.0.0"
+profile: sierra_safe
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+# The weather-regime vocabulary, in one place. The ultimate source of truth is
+# pipeline/regime.py REGIMES; this is the warehouse's single copy, referenced by
+# every accepted_values test via `values: "{{ var('regimes') }}"` so the enum is
+# not maintained in three schema files.
+vars:
+  regimes:
+    - HEAVY_SNOW_LOW_VIS
+    - SNOW
+    - ICE_FREEZING
+    - HIGH_WIND
+    - RAIN_FOG_LOW_VIS
+    - CLEAR_DRY
+    - UNKNOWN
+
+# dbt writes its scratch under the project; both are gitignored.
+target-path: target
+clean-targets: [target, dbt_packages]
+
+models:
+  sierra_safe:
+    staging:
+      # Staging is a thin, always-fresh lens over bronze. Views cost nothing at
+      # this volume and never go stale between runs.
+      +materialized: view
+    marts:
+      # Marts are what the API queries, so they are tables: reads never
+      # recompute, and a rebuild is one `dbt run` away.
+      +materialized: table
+
+seeds:
+  sierra_safe:
+    segments:
+      # The route catalogue (pipeline/routes.build_segments) exported to CSV.
+      # A pipeline test (test_warehouse_seeds.py) asserts the two stay
+      # identical, so this is a copy, not a fork.
+      +column_types:
+        segment_id: text
+        segment_name: text
+        route_id: text
+        lat: double precision
+        lon: double precision
+    route_lengths:
+      # Per-route polyline length in miles (shared/route-polylines.json), served
+      # as the route picker's "Distance" (frontend RouteOverview). It is loaded
+      # for the API to read; mart_hotspots no longer uses it (that average is
+      # over the crash-bearing span now, ADR-0007). A pipeline test asserts it
+      # matches the committed geometry, so it cannot silently drift.
+      +column_types:
+        route_id: text
+        length_miles: double precision
