@@ -49,6 +49,9 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
-      - run: pytest -m "not integration"
+      - run: pytest -m "not integration and not network"
       # Testcontainers spins up a real Postgres for the idempotency test.
       - run: pytest -m integration
+      # Contract tests hit real upstream APIs — informational, never block CI.
+      - run: pytest -m network
+        continue-on-error: true

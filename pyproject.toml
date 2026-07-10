@@ -36,8 +36,12 @@ pipeline = ["data/*.json", "db/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["pipeline/tests"]
+# Contract tests hit real external APIs — excluded by default so the normal run
+# stays offline and deterministic. Opt in with:  pytest -m network
+addopts = "-m 'not network'"
 markers = [
     "integration: exercises real infrastructure (Docker via Testcontainers); skipped when unavailable",
+    "network: hits a real upstream API to catch shape drift; opt-in, slow/flaky, run with -m network",
 ]
 
 [tool.coverage.run]
