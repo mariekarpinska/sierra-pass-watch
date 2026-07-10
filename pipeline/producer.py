@@ -9,6 +9,13 @@ key, same partition, so per-segment ordering holds.
 The event dict IS the bronze schema (see pipeline/db/schema.sql): the
 consumer inserts it column-for-column, no reshaping in between.
 
+Honest scope: a 5-minute poll into a queue is near-real-time micro-batch, not
+event streaming. At this volume a scheduled poller writing directly to Postgres
+would do the same job; the producer/consumer + Kafka split is a deliberate
+showcase of the pattern and a decoupling seam (poll each source once, fan out
+to many consumers). In production I'd simplify to a scheduled poller unless
+multiple consumers, replay or higher velocity earned the queue.
+
 Dry run (DRY_RUN=true or --dry-run): the same code path fed from the JSON
 fixtures in tests/fixtures — no network, no Kafka — used by tests and CI.
 

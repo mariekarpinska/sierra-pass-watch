@@ -1,5 +1,14 @@
 """The streaming consumer: Kafka → Postgres, batched, idempotent.
 
+Honest scope: at this volume this is near-real-time micro-batch, not
+high-throughput streaming, and a plain scheduled poller writing straight to
+Postgres would meet the same dashboard need. The producer/consumer + Kafka
+split is here to practise the pattern and to keep ingestion decoupled from
+storage. In production at this scale I'd simplify to a scheduled poller and
+reach for Kafka only when several independent consumers, replay, or
+backpressure actually demand it. The delivery guarantee below is real either
+way, and the pattern scales up unchanged.
+
 This is the whole Spark replacement. At this data volume (57 waypoints ×
 one reading per poll) a distributed engine buys nothing; a batched insert
 loop is simpler, cheaper and easier to reason about (ADR-0002).
