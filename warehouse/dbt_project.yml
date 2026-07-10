@@ -1,0 +1,48 @@
+# Sierra Corridor warehouse - dbt over the Postgres bronze layer.
+# The pipeline (consumer + backfill) lands raw rows; dbt turns them into the
+# query-shaped marts the FastAPI backend serves.
+#
+#   cd warehouse && dbt build --profiles-dir .
+name: sierra_corridor
+version: "1.0.0"
+profile: sierra_corridor
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+# dbt writes its scratch under the project; both are gitignored.
+target-path: target
+clean-targets: [target, dbt_packages]
+
+models:
+  sierra_corridor:
+    staging:
+      # Staging is a thin, always-fresh lens over bronze. Views cost nothing at
+      # this volume and never go stale between runs.
+      +materialized: view
+    marts:
+      # Marts are what the API queries, so they are tables: reads never
+      # recompute, and a rebuild is one `dbt run` away.
+      +materialized: table
+
+seeds:
+  sierra_corridor:
+    segments:
+      # The route catalogue (pipeline/routes.build_segments) exported to CSV.
+      # A pipeline test (test_warehouse_seeds.py) asserts the two stay
+      # identical, so this is a copy, not a fork.
+      +column_types:
+        segment_id: text
+        segment_name: text
+        route_id: text
+        lat: double precision
+        lon: double precision
+    route_lengths:
+      # Per-route polyline length in miles (shared/route-polylines.json). It is
+      # the denominator for the per-mile crash average in mart_hotspots
+      # (ADR-0007). The same pipeline test asserts it matches the committed
+      # geometry, so it cannot silently drift.
+      +column_types:
+        route_id: text
+        length_miles: double precision

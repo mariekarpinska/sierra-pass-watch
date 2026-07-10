@@ -1,0 +1,59 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Raw landing tables in the public schema, written only by the pipeline
+      (the Kafka consumers and the backfill). dbt reads them and never writes
+      them. See pipeline/db/schema.sql for the DDL.
+    schema: public
+    tables:
+      - name: raw_road_events
+        description: One row per (waypoint, timestamp) reading, regime-labelled at ingest.
+        columns:
+          - name: segment_id
+            tests: [not_null]
+          - name: event_timestamp
+            tests: [not_null]
+          - name: weather_regime
+            tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: &regimes
+                      - HEAVY_SNOW_LOW_VIS
+                      - SNOW
+                      - ICE_FREEZING
+                      - HIGH_WIND
+                      - RAIN_FOG_LOW_VIS
+                      - CLEAR_DRY
+                      - UNKNOWN
+
+      - name: crashes
+        description: One row per CCRS crash report attributed to a catalogue route.
+        columns:
+          - name: case_id
+            tests: [not_null, unique]
+          - name: weather_regime
+            tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: *regimes
+
+      - name: alerts
+        description: >
+          Near-real-time change events (chain-control transitions and CHP
+          incidents), written by the alert consumer (ADR-0008). One row per
+          change, alert_id is the idempotency key.
+        columns:
+          - name: alert_id
+            tests: [not_null, unique]
+          - name: kind
+            tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [CHAIN_CONTROL, INCIDENT]
+          - name: event_time
+            tests: [not_null]
