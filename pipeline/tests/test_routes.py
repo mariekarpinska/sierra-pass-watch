@@ -44,8 +44,11 @@ def test_town_slug_matches_frontend_convention() -> None:
         ("SR-168", -119.3, "SR-168W"),
         ("SR-168", None, "SR-168W"),
         ("MAIN STREET", None, None),
-        # A bare number must not match — "120" here is an address, not a route.
+        # A bare number must not match — an address, not a route. US-395 now
+        # requires a prefix too (a bare "395" previously matched it wrongly).
         ("120 OAK AVE", None, None),
+        ("395 PINE ST", None, None),
+        ("US 395 SB", None, "US-395"),
         (None, None, None),
     ],
 )

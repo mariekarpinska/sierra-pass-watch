@@ -139,7 +139,7 @@ SEGMENTS: list[dict] = build_segments()
 _ROUTE_PATTERNS = {
     "I-80": r"\bI[\s-]?80\b",
     "US-50": r"\b(US|HWY|HIGHWAY)[\s-]?50\b",
-    "US-395": r"\b(US|HWY|HIGHWAY)?[\s-]?395\b",
+    "US-395": r"\b(US|HWY|HIGHWAY)[\s-]?395\b",
     "US-6": r"\b(US|HWY|HIGHWAY)[\s-]?6\b",
     **{
         f"SR-{n}": rf"\b(SR|CA|ROUTE|STATE ROUTE|HWY|HIGHWAY)[\s-]?{n}\b"
