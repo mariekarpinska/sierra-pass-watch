@@ -1,0 +1,58 @@
+segment_id,segment_name,route_id,lat,lon
+I-80:colfax,Colfax,I-80,39.1002,-120.9533
+I-80:donner-summit,Donner Summit,I-80,39.3163,-120.3208
+I-80:truckee,Truckee,I-80,39.328,-120.1833
+US-50:placerville,Placerville,US-50,38.7296,-120.7985
+US-50:echo-summit,Echo Summit,US-50,38.8124,-120.0307
+US-50:south-lake-tahoe,South Lake Tahoe,US-50,38.9399,-119.9772
+US-395:bridgeport,Bridgeport,US-395,38.2566,-119.2313
+US-395:lee-vining,Lee Vining,US-395,37.9558,-119.1188
+US-395:bishop,Bishop,US-395,37.3636,-118.3951
+US-395:lone-pine,Lone Pine,US-395,36.6061,-118.0626
+US-6:bishop,Bishop,US-6,37.3636,-118.3951
+SR-70:oroville,Oroville,SR-70,39.5138,-121.5564
+SR-70:quincy,Quincy,SR-70,39.9368,-120.9456
+SR-88:jackson,Jackson,SR-88,38.3489,-120.7741
+SR-88:kirkwood,Kirkwood,SR-88,38.6868,-120.0657
+SR-88:carson-pass,Carson Pass,SR-88,38.694,-119.9842
+SR-4:arnold,Arnold,SR-4,38.2552,-120.3502
+SR-4:bear-valley,Bear Valley,SR-4,38.4602,-120.0419
+SR-4:ebbetts-pass,Ebbetts Pass,SR-4,38.5466,-119.8085
+SR-108:sonora,Sonora,SR-108,37.9841,-120.3822
+SR-108:pinecrest,Pinecrest,SR-108,38.1929,-119.9876
+SR-108:sonora-pass,Sonora Pass,SR-108,38.3283,-119.636
+SR-120:groveland,Groveland,SR-120,37.8377,-120.2266
+SR-120:tuolumne-meadows,Tuolumne Meadows,SR-120,37.8736,-119.35
+SR-120:tioga-pass,Tioga Pass,SR-120,37.9105,-119.2573
+SR-120:lee-vining,Lee Vining,SR-120,37.9558,-119.1188
+SR-178:lake-isabella,Lake Isabella,SR-178,35.6188,-118.4729
+SR-178:walker-pass,Walker Pass,SR-178,35.6597,-118.029
+SR-178:ridgecrest,Ridgecrest,SR-178,35.6225,-117.6709
+SR-49:grass-valley,Grass Valley,SR-49,39.2188,-121.0608
+SR-49:auburn,Auburn,SR-49,38.8966,-121.0769
+SR-49:sonora,Sonora,SR-49,37.9841,-120.3822
+SR-49:mariposa,Mariposa,SR-49,37.4849,-119.9663
+SR-89:tahoe-city,Tahoe City,SR-89,39.1658,-120.1428
+SR-89:markleeville,Markleeville,SR-89,38.6952,-119.7782
+SR-89:monitor-pass,Monitor Pass,SR-89,38.673,-119.619
+SR-28:tahoe-city,Tahoe City,SR-28,39.1658,-120.1428
+SR-28:kings-beach,Kings Beach,SR-28,39.2377,-120.0263
+SR-207:stateline,Stateline,SR-207,38.9596,-119.9398
+SR-267:truckee,Truckee,SR-267,39.328,-120.1833
+SR-267:kings-beach,Kings Beach,SR-267,39.2377,-120.0263
+SR-431:incline-village,Incline Village,SR-431,39.251,-119.946
+SR-431:mount-rose-summit,Mount Rose Summit,SR-431,39.314,-119.897
+SR-140:mariposa,Mariposa,SR-140,37.4849,-119.9663
+SR-140:el-portal,El Portal,SR-140,37.6757,-119.7831
+SR-41:oakhurst,Oakhurst,SR-41,37.3277,-119.6493
+SR-41:wawona,Wawona,SR-41,37.5377,-119.6566
+SR-180:grant-grove,Grant Grove,SR-180,36.7409,-118.9618
+SR-180:cedar-grove,Cedar Grove,SR-180,36.7944,-118.684
+SR-198:three-rivers,Three Rivers,SR-198,36.4386,-118.902
+SR-198:giant-forest,Giant Forest,SR-198,36.565,-118.773
+SR-168W:shaver-lake,Shaver Lake,SR-168W,37.1058,-119.3179
+SR-168W:huntington-lake,Huntington Lake,SR-168W,37.233,-119.2204
+SR-168E:bishop,Bishop,SR-168E,37.3636,-118.3951
+SR-168E:south-lake,South Lake,SR-168E,37.169,-118.564
+SR-203:mammoth-lakes,Mammoth Lakes,SR-203,37.6485,-118.9721
+SR-158:june-lake,June Lake,SR-158,37.7805,-119.0718

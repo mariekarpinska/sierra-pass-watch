@@ -1,0 +1,18 @@
+# Connection profile, checked in. Values come from the same environment
+# variables docker-compose and the pipeline use, so nothing secret lives here
+# and the same models target local Postgres or cloud Postgres by swapping the
+# environment, not the file.
+sierra_safe:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER', 'app') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'app_dev_password') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'app') }}"
+      # Marts land in their own schema so bronze (public, pipeline-owned) and
+      # analytics (dbt-owned) never write each other's tables.
+      schema: analytics
+      threads: 4
