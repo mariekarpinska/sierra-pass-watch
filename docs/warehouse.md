@@ -92,8 +92,31 @@ runs. It is the one place the batch warehouse yields to the real-time path.
 (`not_null`, `unique`, `accepted_values` on the regime and cause vocabularies),
 three singular tests
 ([warehouse/tests/](../warehouse/tests/)) assert each aggregate mart holds
-exactly one row per its grain. A pipeline test
-(`pipeline/tests/test_warehouse_seeds.py`) asserts the two seeds still match the
-code and geometry they were exported from, so a seed cannot silently drift. CI
-runs the whole chain against a real Postgres (the `warehouse` job in
-[ci.yml](../.github/workflows/ci.yml)).
+exactly one row per its grain.
+
+>  A single-column test cannot catch a broken *composite* grain. If a join in `mart_crash_conditions` ever fanned out
+> (say the nearest-anchor attribution matched a crash to two anchors, or a
+> sensor-reading join returned more than one row), that crash would appear twice
+> and every count built on top of it would be inflated: `crash_count` in
+> `mart_crash_patterns`, and through it the `concentration_ratio` and the
+> `is_hotspot` flag in `mart_hotspots`. The singular test (`group by <grain> having count(*) > 1`)
+> is the thing that fails the build the moment a crash is double counted.
+
+### Inputs and environment are tested too
+
+A dbt test can only trust the rows it is given, so two tests guard the edges of
+the warehouse:
+
+- **Seeds cannot silently drift.** The two seeds are copies of pipeline data
+  (`segments.csv` from `pipeline.routes.build_segments`, `route_lengths.csv`
+  from `shared/route-polylines.json`). A pipeline test,
+  [pipeline/tests/test_warehouse_seeds.py](../pipeline/tests/test_warehouse_seeds.py),
+  re-derives both from source and asserts the CSVs still match, so editing the
+  route catalogue without re-exporting the seed fails `pytest` rather than
+  building the marts on stale geography.
+- **The whole chain runs against a real Postgres.** The `warehouse` job in
+  [ci.yml](../.github/workflows/ci.yml) stands up `postgres:17`, applies the
+  bronze schema and a small fixture, then runs `dbt build` (seed + run + test)
+  on every push. Postgres-specific behavior (the `~` regex, `filter (where ...)`,
+  interval math) is exercised for real, so green CI should mean the marts genuinely
+  build and every contract holds on the same engine production uses.
