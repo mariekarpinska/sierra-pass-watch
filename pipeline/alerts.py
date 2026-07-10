@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from pipeline.geo import haversine_km
+from pipeline.geo import nearest
 from pipeline.polylines import measure_for
 from pipeline.routes import SEGMENTS, in_sierra, parse_route
 
@@ -68,12 +68,7 @@ class Derived:
 
 
 def _nearest_segment(lat: float, lon: float, max_km: float = _MATCH_MAX_KM) -> dict | None:
-    best, best_km = None, max_km
-    for seg in SEGMENTS:
-        km = haversine_km(lat, lon, seg["lat"], seg["lon"])
-        if km <= best_km:
-            best, best_km = seg, km
-    return best
+    return nearest(SEGMENTS, lat, lon, max_km, lambda s: (s["lat"], s["lon"]))
 
 
 def _chain_transition(prev: str, now: str) -> str | None:

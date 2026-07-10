@@ -51,6 +51,21 @@ def connect() -> psycopg.Connection:
     )
 
 
+def _insert_batch(conn: psycopg.Connection, sql: str, columns: tuple[str, ...], rows: list[dict]) -> int:
+    """Executemany one idempotent INSERT; returns rows actually inserted.
+
+    Shared by all three writers — they differ only in their SQL and columns.
+    Each dict is projected to a tuple in column order; ON CONFLICT DO NOTHING
+    makes re-inserts (Kafka replays, backfill re-runs) no-op.
+    """
+    if not rows:
+        return 0
+    values = [tuple(r.get(c) for c in columns) for r in rows]
+    with conn.cursor() as cur:
+        cur.executemany(sql, values)
+        return cur.rowcount if cur.rowcount >= 0 else 0
+
+
 def insert_road_events(conn: psycopg.Connection, events: list[dict]) -> int:
     """Insert a batch of road events; duplicates no-op. Returns rows inserted.
 
@@ -58,22 +73,12 @@ def insert_road_events(conn: psycopg.Connection, events: list[dict]) -> int:
     acknowledge upstream (Kafka offsets) — commit-db-then-commit-offsets is
     the consumer's exactly-once-rows recipe.
     """
-    if not events:
-        return 0
-    rows = [tuple(e.get(c) for c in ROAD_EVENT_COLUMNS) for e in events]
-    with conn.cursor() as cur:
-        cur.executemany(_ROAD_EVENT_SQL, rows)
-        return cur.rowcount if cur.rowcount >= 0 else 0
+    return _insert_batch(conn, _ROAD_EVENT_SQL, ROAD_EVENT_COLUMNS, events)
 
 
 def insert_crashes(conn: psycopg.Connection, crashes: list[dict]) -> int:
     """Insert crash rows; existing case_ids no-op. Returns rows inserted."""
-    if not crashes:
-        return 0
-    rows = [tuple(c.get(col) for col in CRASH_COLUMNS) for c in crashes]
-    with conn.cursor() as cur:
-        cur.executemany(_CRASH_SQL, rows)
-        return cur.rowcount if cur.rowcount >= 0 else 0
+    return _insert_batch(conn, _CRASH_SQL, CRASH_COLUMNS, crashes)
 
 
 # --- alerts (feat/near-realtime-alerts) -----------------------------------------
@@ -92,12 +97,7 @@ _ALERT_SQL = (
 
 def insert_alerts(conn: psycopg.Connection, alerts: list[dict]) -> int:
     """Insert alert rows; existing alert_ids no-op. Returns rows inserted."""
-    if not alerts:
-        return 0
-    rows = [tuple(a.get(col) for col in ALERT_COLUMNS) for a in alerts]
-    with conn.cursor() as cur:
-        cur.executemany(_ALERT_SQL, rows)
-        return cur.rowcount if cur.rowcount >= 0 else 0
+    return _insert_batch(conn, _ALERT_SQL, ALERT_COLUMNS, alerts)
 
 
 def load_alert_state(conn: psycopg.Connection) -> dict:

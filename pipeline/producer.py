@@ -35,7 +35,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pipeline.geo import haversine_km
+from pipeline.geo import nearest
 from pipeline.regime import classify_conditions
 from pipeline.routes import SEGMENTS
 from pipeline.sources import cwwp2, nws, openmeteo, usgs
@@ -58,12 +58,7 @@ def _handle_signal(signum: int, _frame) -> None:
 
 def _nearest(items: list, lat: float, lon: float, max_km: float = STATION_MAX_KM):
     """Nearest item (with .lat/.lon) within max_km, or None."""
-    best, best_km = None, max_km
-    for item in items:
-        km = haversine_km(lat, lon, item.lat, item.lon)
-        if km <= best_km:
-            best, best_km = item, km
-    return best
+    return nearest(items, lat, lon, max_km, lambda i: (i.lat, i.lon))
 
 
 def build_event(

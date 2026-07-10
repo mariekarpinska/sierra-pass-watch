@@ -17,6 +17,22 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
+def nearest(items, lat, lon, max_km, coords):
+    """Nearest item within ``max_km`` of (lat, lon), or None (max_km inclusive).
+
+    ``coords(item)`` returns the item's ``(lat, lon)`` so one scan serves both
+    the source dataclasses (``.lat``/``.lon``) and the route catalogue dicts
+    (``["lat"]``/``["lon"]``).
+    """
+    best, best_km = None, max_km
+    for item in items:
+        item_lat, item_lon = coords(item)
+        km = haversine_km(lat, lon, item_lat, item_lon)
+        if km <= best_km:
+            best, best_km = item, km
+    return best
+
+
 MILES_PER_DEG_LAT = 69.172  # one degree of latitude, in miles (spherical)
 
 

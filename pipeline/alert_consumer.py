@@ -1,26 +1,26 @@
 """Alert consumer: Kafka → Postgres alerts table, plus the notify hook.
 
-Mirrors pipeline/consumer.py exactly — poll, batch, insert with ON CONFLICT
-DO NOTHING, commit the database, then commit Kafka offsets — so alert_id gives
-the same exactly-once-rows guarantee segment_id gives readings.
+Shares the exactly-once loop in pipeline/streaming.py with the readings
+consumer — poll, batch, insert with ON CONFLICT DO NOTHING, commit the database,
+then commit Kafka offsets — so alert_id gives the same exactly-once-rows
+guarantee segment_id gives readings. This module adds only the alert specifics:
+its columns, its insert function, and the ``notify`` side effect.
 
-This is also where "deliver ASAP" happens: ``notify`` is the single seam a real
-push transport would plug into (WebSocket, web-push, SMS). It logs here; wiring
-an actual transport is deliberately out of scope for this showcase. Keeping the
-notifier a separate consumer is the point — the producer polls CHP once and any
-number of consumers act on the same alert without re-polling the source.
+``notify`` is the single seam a real push transport would plug into (WebSocket,
+web-push, SMS). It logs here; wiring an actual transport is deliberately out of
+scope for this showcase. Keeping the notifier a separate consumer is the point —
+the producer polls CHP once and any number of consumers act on the same alert
+without re-polling the source.
 
 Usage:
     python -m pipeline.alert_consumer
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
-import signal
-import time
 
+from pipeline import streaming
 from pipeline.database import ALERT_COLUMNS, connect, insert_alerts
 
 log = logging.getLogger(__name__)
@@ -31,26 +31,7 @@ BATCH_TIMEOUT_S = 2.0
 # Minimum keys a message needs before we'll insert it.
 _REQUIRED_KEYS = {"alert_id", "kind", "headline"}
 
-_running = True
-
-
-def _handle_signal(signum: int, _frame) -> None:
-    global _running
-    log.info("shutdown signal received: %s", signum)
-    _running = False
-
-
-def parse_message(raw: bytes) -> dict | None:
-    """Decode one Kafka message into an alert row, or None if malformed."""
-    try:
-        alert = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        log.warning("dropping malformed alert: %s", exc)
-        return None
-    if not isinstance(alert, dict) or not _REQUIRED_KEYS.issubset(alert):
-        log.warning("dropping alert missing required keys")
-        return None
-    return {column: alert.get(column) for column in ALERT_COLUMNS}
+parse_message = streaming.make_parser(ALERT_COLUMNS, _REQUIRED_KEYS)
 
 
 def notify(alert: dict) -> None:
@@ -59,43 +40,17 @@ def notify(alert: dict) -> None:
 
 
 def run(consumer, conn, max_batches: int | None = None) -> int:
-    """Consume → batch → insert → commit → notify. Returns rows written."""
-    total_inserted = 0
-    batch: list[dict] = []
-    batches_done = 0
-    deadline = time.monotonic() + BATCH_TIMEOUT_S
-
-    def flush() -> None:
-        nonlocal batch, total_inserted, batches_done, deadline
-        if batch:
-            inserted = insert_alerts(conn, batch)
-            conn.commit()
-            consumer.commit(asynchronous=False)
-            total_inserted += inserted
-            for alert in batch:
-                notify(alert)
-            log.info("alert batch flushed: messages=%d inserted=%d", len(batch), inserted)
-            batch = []
-        batches_done += 1
-        deadline = time.monotonic() + BATCH_TIMEOUT_S
-
-    while _running:
-        message = consumer.poll(1.0)
-        if message is not None:
-            if message.error():
-                log.error("kafka error: %s", message.error())
-            else:
-                alert = parse_message(message.value())
-                if alert is not None:
-                    batch.append(alert)
-
-        if len(batch) >= BATCH_SIZE or (batch and time.monotonic() >= deadline):
-            flush()
-            if max_batches is not None and batches_done >= max_batches:
-                break
-
-    flush()
-    return total_inserted
+    """Drain the alerts topic into the alerts table, notifying after each flush."""
+    return streaming.run(
+        consumer,
+        conn,
+        parse_message=parse_message,
+        insert_fn=insert_alerts,
+        batch_size=BATCH_SIZE,
+        batch_timeout=BATCH_TIMEOUT_S,
+        on_flush=notify,
+        max_batches=max_batches,
+    )
 
 
 def main() -> None:
@@ -111,9 +66,7 @@ def main() -> None:
         }
     )
     consumer.subscribe([os.getenv("KAFKA_ALERTS_TOPIC", "sierra.road.alerts")])
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    streaming.install_signal_handlers()
 
     conn = connect()
     log.info("alert consumer started")
