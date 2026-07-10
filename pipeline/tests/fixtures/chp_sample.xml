@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<State ID="California">
+  <Center ID="VTCC">
+    <Dispatch ID="VTCC">
+      <Log ID="260710ST0001">
+        <LogTime>"Jul 10 2026 12:04AM"</LogTime>
+        <LogType>"1183-Trfc Collision-Unkn Inj"</LogType>
+        <Location>"I80 E of Donner Pass Rd"</Location>
+        <LocationDesc>"Donner Summit"</LocationDesc>
+        <Area>"Truckee"</Area>
+        <LATLON>"39316300:120320800"</LATLON>
+      </Log>
+      <Log ID="260710ST0002">
+        <LogTime>"Jul 10 2026 12:18AM"</LogTime>
+        <LogType>"1125-Traffic Hazard"</LogType>
+        <Location>"US50 W of Echo Summit"</Location>
+        <LocationDesc>"Echo Summit"</LocationDesc>
+        <Area>"Placerville"</Area>
+        <LATLON>"38812400:120030700"</LATLON>
+      </Log>
+      <Log ID="260710ST0004">
+        <LogTime>"Jul 10 2026 12:31AM"</LogTime>
+        <LogType>"Road/Weather Conditions"</LogType>
+        <Location>"SR88 near Kirkwood"</Location>
+        <LocationDesc>""</LocationDesc>
+        <Area>"Placerville"</Area>
+        <LATLON>""</LATLON>
+      </Log>
+    </Dispatch>
+  </Center>
+  <Center ID="LACC">
+    <Dispatch ID="LACC">
+      <Log ID="260710LA0003">
+        <LogTime>"Jul 10 2026 12:22AM"</LogTime>
+        <LogType>"1179-Trfc Collision-Fatal"</LogType>
+        <Location>"I5 N of Los Angeles"</Location>
+        <LocationDesc>""</LocationDesc>
+        <Area>"Central LA"</Area>
+        <LATLON>"34050000:118250000"</LATLON>
+      </Log>
+    </Dispatch>
+  </Center>
+</State>
