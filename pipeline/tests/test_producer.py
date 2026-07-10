@@ -53,6 +53,34 @@ class TestBuildEvent:
         assert event["weather_regime"] == "HIGH_WIND"
 
 
+class TestNwsFallbackDecision:
+    def test_nws_is_consulted_when_openmeteo_is_down(self, monkeypatch) -> None:
+        # Open-Meteo returned nothing for every waypoint (weather is None) — the
+        # exact case where NWS must still be tried, not skipped.
+        import pipeline.producer as producer_module
+        from pipeline.sources.nws import NwsForecast
+
+        monkeypatch.setattr(
+            producer_module,
+            "_fetch_all",
+            lambda dry_run: ([], [], [], {s["segment_id"]: None for s in SEGMENTS}),
+        )
+        consulted: list[str] = []
+
+        def fake_forecast(segment_id, lat, lon):
+            consulted.append(segment_id)
+            return NwsForecast(start_time="t", temperature_f=None, wind_gust_mph=44.0, short_forecast="")
+
+        monkeypatch.setattr(producer_module.nws, "fetch_forecast", fake_forecast)
+
+        events = poll_once(kafka_producer=None, dry_run=False)
+
+        assert len(consulted) == len(SEGMENTS)  # tried for every down waypoint
+        donner = next(e for e in events if e["segment_id"] == "I-80:donner-summit")
+        assert donner["wind_gust_mph"] == 44.0  # NWS gust reached the event
+        assert donner["weather_regime"] == "HIGH_WIND"
+
+
 class TestDryRunPoll:
     def test_emits_one_event_per_catalogue_waypoint(self) -> None:
         events = poll_once(kafka_producer=None, dry_run=True)

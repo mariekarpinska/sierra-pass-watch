@@ -158,8 +158,10 @@ def poll_once(kafka_producer=None, dry_run: bool = False) -> list[dict]:
     for segment in SEGMENTS:
         weather = weather_by_segment.get(segment["segment_id"])
         gust_fallback = None
-        if not dry_run and weather is not None and weather.wind_gust_mph is None:
-            # NWS only when the primary sources came back empty-handed.
+        # NWS is the last-resort gust source: consult it whenever Open-Meteo has
+        # no gust for this waypoint — including when Open-Meteo failed outright
+        # (weather is None), which is exactly when the fallback matters most.
+        if not dry_run and (weather is None or weather.wind_gust_mph is None):
             forecast = nws.fetch_forecast(segment["segment_id"], segment["lat"], segment["lon"])
             gust_fallback = forecast.wind_gust_mph if forecast else None
 
