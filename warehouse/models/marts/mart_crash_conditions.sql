@@ -30,7 +30,11 @@ nearest_segment as (
         segments.segment_name,
         row_number() over (
             partition by crashes.case_id
-            order by power(crashes.lat - segments.lat, 2) + power(crashes.lon - segments.lon, 2)
+            -- we're ordering by the distance the crash was to the nearest anchor, but because the 
+            -- nearest anchor might change if it's equidistant, we are adding ordering by segment id
+            -- for stability between runs
+            order by power(crashes.lat - segments.lat, 2) + power(crashes.lon - segments.lon, 2),
+                     segments.segment_id
         ) as segment_rank
     from crashes
     join segments on segments.route_id = crashes.route_id
