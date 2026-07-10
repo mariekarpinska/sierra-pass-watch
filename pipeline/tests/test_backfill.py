@@ -85,6 +85,13 @@ class TestParseDatetime:
             parsed = _parse_datetime({"CRASH_DATE_TIME": raw})
             assert parsed is not None and parsed.tzinfo is not None
 
+    def test_pm_time_maps_to_afternoon_not_morning(self) -> None:
+        # 12-hour AM/PM vintages: PM must add 12 h, not be silently dropped.
+        pm = _parse_datetime({"CRASH_DATE_TIME": "01/12/2025 06:30:00 PM"})
+        assert pm is not None and (pm.hour, pm.minute) == (18, 30)
+        am = _parse_datetime({"CRASH_DATE_TIME": "01/12/2025 06:30:00 AM"})
+        assert am is not None and am.hour == 6
+
     def test_rejects_garbage(self) -> None:
         assert _parse_datetime({"CRASH_DATE_TIME": "soon"}) is None
         assert _parse_datetime({}) is None

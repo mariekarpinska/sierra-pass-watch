@@ -113,7 +113,9 @@ def _parse_datetime(row: dict) -> datetime | None:
     raw = _get(row, "CRASH_DATE_TIME", "COLLISION_DATE")
     if raw is None:
         return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%m/%d/%Y %H:%M:%S %p", "%m/%d/%Y", "%Y-%m-%d"):
+    # The AM/PM format uses %I (12-hour), not %H: %p only takes effect with %I,
+    # so "%H … %p" silently drops the PM and parses evening times 12 h early.
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y", "%Y-%m-%d"):
         try:
             return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
