@@ -16,14 +16,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: &regimes
-                  - HEAVY_SNOW_LOW_VIS
-                  - SNOW
-                  - ICE_FREEZING
-                  - HIGH_WIND
-                  - RAIN_FOG_LOW_VIS
-                  - CLEAR_DRY
-                  - UNKNOWN
+                values: "{{ var('regimes') }}"
       - name: regime_source
         tests:
           - not_null
@@ -46,7 +39,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: *regimes
+                values: "{{ var('regimes') }}"
 
   - name: mart_pattern_causes
     description: >
@@ -74,7 +67,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: *regimes
+                values: "{{ var('regimes') }}"
       - name: concentration_ratio
         tests: [not_null]
       - name: is_hotspot

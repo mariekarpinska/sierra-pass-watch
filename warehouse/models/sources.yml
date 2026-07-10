@@ -20,14 +20,7 @@ sources:
               - not_null
               - accepted_values:
                   arguments:
-                    values: &regimes
-                      - HEAVY_SNOW_LOW_VIS
-                      - SNOW
-                      - ICE_FREEZING
-                      - HIGH_WIND
-                      - RAIN_FOG_LOW_VIS
-                      - CLEAR_DRY
-                      - UNKNOWN
+                    values: "{{ var('regimes') }}"
 
       - name: crashes
         description: One row per CCRS crash report attributed to a catalogue route.
@@ -39,7 +32,7 @@ sources:
               - not_null
               - accepted_values:
                   arguments:
-                    values: *regimes
+                    values: "{{ var('regimes') }}"
 
       - name: alerts
         description: >

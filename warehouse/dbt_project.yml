@@ -11,6 +11,20 @@ model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
 
+# The weather-regime vocabulary, in one place. The ultimate source of truth is
+# pipeline/regime.py REGIMES; this is the warehouse's single copy, referenced by
+# every accepted_values test via `values: "{{ var('regimes') }}"` so the enum is
+# not maintained in three schema files.
+vars:
+  regimes:
+    - HEAVY_SNOW_LOW_VIS
+    - SNOW
+    - ICE_FREEZING
+    - HIGH_WIND
+    - RAIN_FOG_LOW_VIS
+    - CLEAR_DRY
+    - UNKNOWN
+
 # dbt writes its scratch under the project; both are gitignored.
 target-path: target
 clean-targets: [target, dbt_packages]

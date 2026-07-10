@@ -11,14 +11,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: &regimes
-                  - HEAVY_SNOW_LOW_VIS
-                  - SNOW
-                  - ICE_FREEZING
-                  - HIGH_WIND
-                  - RAIN_FOG_LOW_VIS
-                  - CLEAR_DRY
-                  - UNKNOWN
+                values: "{{ var('regimes') }}"
 
   - name: stg_crashes
     description: Crash reports with primary_factor normalized into the cause taxonomy and a per-mile bin.
@@ -54,7 +47,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: *regimes
+                values: "{{ var('regimes') }}"
 
   - name: stg_alerts
     description: Bronze alerts, unfiltered - one row per change event.
