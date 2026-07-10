@@ -46,6 +46,8 @@ select
     -- a noisy change log to "the current state here" when it wants to.
     row_number() over (
         partition by kind, route_id, segment_id
-        order by event_time desc
+        -- alert_id breaks ties when two alerts share an event_time, so the flag
+        -- is stable per request (this is a view, evaluated on every read).
+        order by event_time desc, alert_id desc
     ) = 1 as is_latest_for_location
 from recent
