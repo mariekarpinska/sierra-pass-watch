@@ -109,23 +109,24 @@ def _get(row: dict, *candidates: str) -> str | None:
 
 
 def _parse_datetime(row: dict) -> datetime | None:
-    """CCRS 2022+ has CRASH_DATE_TIME; older vintages split date and time."""
+    """Parse a CCRS crash timestamp to a UTC datetime, or None.
+
+    The live CCRS export is ISO 8601, 24-hour — e.g. "2024-01-13T16:05:00"
+    """
     raw = _get(row, "CRASH_DATE_TIME", "COLLISION_DATE")
-    if raw is None:
+    if not raw:
         return None
-    # The AM/PM format uses %I (12-hour), not %H: %p only takes effect with %I,
-    # so "%H … %p" silently drops the PM and parses evening times 12 h early.
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    # ISO-ish fallback (e.g. "2025-01-12T06:30:00").
     try:
         parsed = datetime.fromisoformat(raw)
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
-        return None
+        pass
+    for fmt in ("%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y", "%Y/%m/%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
 
 
 def crash_row(row: dict) -> dict | None:

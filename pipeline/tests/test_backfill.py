@@ -85,6 +85,12 @@ class TestParseDatetime:
             parsed = _parse_datetime({"CRASH_DATE_TIME": raw})
             assert parsed is not None and parsed.tzinfo is not None
 
+    def test_parses_live_iso_24_hour_shape(self) -> None:
+        # The real CCRS export shape (verified 2016–2025): ISO 8601, 24-hour.
+        parsed = _parse_datetime({"CRASH_DATE_TIME": "2024-01-13T16:05:00"})
+        assert parsed is not None and (parsed.hour, parsed.minute) == (16, 5)
+        assert parsed.tzinfo is not None
+
     def test_pm_time_maps_to_afternoon_not_morning(self) -> None:
         # 12-hour AM/PM vintages: PM must add 12 h, not be silently dropped.
         pm = _parse_datetime({"CRASH_DATE_TIME": "01/12/2025 06:30:00 PM"})
