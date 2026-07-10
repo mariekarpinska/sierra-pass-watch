@@ -67,16 +67,29 @@ route, or a point off the polyline) has a null bin: it stays in
 per-mile marts, so a per-mile query answers honestly empty rather than
 inventing a location.
 
-## Why the hotspot denominator is a length, not a row count
+## Why the hotspot denominator is the crash-bearing span
 
-`concentration_ratio = bin crashes / (route crashes in that regime / route
-length in miles)`. Using the whole route length (the `route_lengths` seed)
-means an empty stretch of road correctly dilutes the average, so a genuinely
-busy mile stands out. That is why no zero-crash grid is materialized: the
-denominator is a number from a seed, not a count of rows we would otherwise
-have to invent. A bin flags as a hotspot at ratio >= 1.5 **and** >= 8 crashes;
-below 8 it is treated as noise and the UI keeps showing the small-sample
-caveat.
+`concentration_ratio = bin crashes / (route crashes in that regime / covered
+miles)`, where `covered_miles` is the span from the first to the last occupied
+mile bin. The ratio then reads honestly: "this mile has N times the crashes of
+the typical mile where crashes actually happen on this road."
+
+The obvious-looking alternative, dividing by the **full** route length, does not
+work here. Sierra passes are mostly empty approach miles, so that average is
+near zero, every populated bin divides by it and scores in the dozens, the
+`>= 1.5` gate never binds, and `is_hotspot` quietly collapses to "count >= 8".
+Measuring over the active span fixes that while still letting the empty miles
+*between* clusters dilute the average (only the long approaches outside the span
+are excluded). No zero-crash grid has to be materialized: the span comes from
+`min`/`max` of the occupied bins.
+
+A bin flags as a hotspot at ratio >= 1.5 **and** >= 8 crashes; below 8 it is
+noise and the UI keeps showing the small-sample caveat. A lone cluster (one
+occupied bin) is its own average, so it scores 1.0 and is not a *relative*
+hotspot; `crash_count` is still exposed for any "high volume" signal the UI
+wants independent of concentration. Route length for display (the picker's
+"Distance") comes from the `route_lengths` seed, which is loaded for the API to
+read but no longer feeds this mart.
 
 ## Why `mart_active_alerts` is a view
 

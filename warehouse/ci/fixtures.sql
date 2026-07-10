@@ -1,7 +1,9 @@
 -- Tiny, hand-readable bronze fixture for CI and local dbt verification.
 -- Covers each interesting shape once:
---   * a snow cluster in one mile bin big enough to flag as a hotspot (>= 8),
---     including one fatal, so pct_fatal and is_hotspot are exercised;
+--   * a snow cluster spread over three adjacent mile bins (44/45/46) where the
+--     busiest (bin 44, 8 crashes incl. one fatal) is >= 1.5x the corridor's
+--     per-mile average and its neighbours are not, so is_hotspot and pct_fatal
+--     are both exercised (and the relative, not absolute, definition is tested);
 --   * a crash whose report says CLEAR but a sensor reading within 2 h says
 --     SNOW, so regime_source = 'sensor' is exercised;
 --   * a clear-weather crash in a different bin (small_sample = true);
@@ -54,6 +56,21 @@ values
     ('ci-8', '2026-01-09 12:00:00+00', 39.3169, -120.3205, 'I-80', 'EB', 'Injury',
      'Rear End', '22350 UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
      'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 44.80),
+    -- Two lighter SNOW bins next door (45 and 46). With bin 44 they make a
+    -- 3-mile crash-bearing span whose per-mile average is (8+2+2)/3 = 4, so bin
+    -- 44 concentrates at 8/4 = 2.0x (a hotspot) while 45 and 46 sit at 0.5x.
+    ('ci-13', '2026-01-09 08:15:00+00', 39.3155, -120.3180, 'I-80', 'EB', 'Injury',
+     'Rear End', 'UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
+     'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 45.20),
+    ('ci-14', '2026-01-09 08:45:00+00', 39.3150, -120.3150, 'I-80', 'WB', 'Property Damage Only',
+     'Sideswipe', 'FOLLOWING TOO CLOSELY', 'Guardrail', 'I-80 WESTBOUND',
+     'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 0, 0, 45.60),
+    ('ci-15', '2026-01-09 09:10:00+00', 39.3145, -120.3120, 'I-80', 'EB', 'Injury',
+     'Rear End', 'UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
+     'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 46.10),
+    ('ci-16', '2026-01-09 09:40:00+00', 39.3140, -120.3100, 'I-80', 'WB', 'Injury',
+     'Rear End', 'UNSAFE LANE CHANGE', 'Other Motor Vehicle', 'I-80 WESTBOUND',
+     'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 46.50),
     -- Sensor-window case: report says CLEAR, but the 06:30 heavy-snow reading
     -- at Donner Summit is within 2 h -> regime_source must be 'sensor' (SNOW),
     -- and it lands in the same bin 44.

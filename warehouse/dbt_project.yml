@@ -39,10 +39,11 @@ seeds:
         lat: double precision
         lon: double precision
     route_lengths:
-      # Per-route polyline length in miles (shared/route-polylines.json). It is
-      # the denominator for the per-mile crash average in mart_hotspots
-      # (ADR-0007). The same pipeline test asserts it matches the committed
-      # geometry, so it cannot silently drift.
+      # Per-route polyline length in miles (shared/route-polylines.json), served
+      # as the route picker's "Distance" (frontend RouteOverview). It is loaded
+      # for the API to read; mart_hotspots no longer uses it (that average is
+      # over the crash-bearing span now, ADR-0007). A pipeline test asserts it
+      # matches the committed geometry, so it cannot silently drift.
       +column_types:
         route_id: text
         length_miles: double precision

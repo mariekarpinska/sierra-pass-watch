@@ -84,9 +84,10 @@ seeds:
   - name: route_lengths
     description: >
       Per-route polyline length in miles, exported from
-      shared/route-polylines.json. The denominator for the per-mile crash
-      average in mart_hotspots (ADR-0007). The same pipeline test asserts it
-      matches the committed geometry.
+      shared/route-polylines.json. Served as the route picker's "Distance"
+      (frontend RouteOverview); mart_hotspots no longer uses it as a denominator
+      (that average is over the crash-bearing span now, ADR-0007). A pipeline
+      test asserts it matches the committed geometry.
     columns:
       - name: route_id
         tests: [not_null, unique]
