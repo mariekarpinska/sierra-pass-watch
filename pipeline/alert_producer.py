@@ -11,10 +11,10 @@ Honest scope (same as the readings pipeline): polling CHP every ~60 s and
 publishing the diff is near-real-time, not a live socket — CHP offers no push,
 so this is as fast as the source allows. The Kafka hop lets one poll of CHP
 fan out to many consumers (DB writer, notifier, live map) without any of them
-re-polling CHP or a separate relay service. In production at this volume I'd
-likely fold detection and delivery into one scheduled worker (Postgres
-LISTEN/NOTIFY or a managed pub/sub for the push side) and keep Kafka for when
-several consumers or replay actually earn it.
+re-polling CHP or a separate relay service (if many consumers become warranted).
+In production at this volume I'd likely fold detection and delivery into one 
+scheduled worker (Postgres LISTEN/NOTIFY or a managed pub/sub for the push side)
+and keep Kafka for when several consumers or replay actually earn it.
 
 Usage:
     python -m pipeline.alert_producer --once
@@ -61,7 +61,7 @@ def poll_once(kafka_producer=None, conn=None, dry_run: bool = False) -> list:
     now = datetime.now(timezone.utc).isoformat()
     if dry_run:
         chain_controls = cwwp2.parse_chain_control(_load_fixture("cwwp2_cc_sample.json"))
-        incidents = chp.parse_incidents(_load_fixture("chp_sample.json"))
+        incidents = chp.parse_incidents((FIXTURES_DIR / "chp_sample.xml").read_text(encoding="utf-8"))
         prev_state: dict = {}
     else:
         chain_controls = cwwp2.fetch_chain_control()

@@ -22,3 +22,12 @@ def get_json(url: str, params: dict | None = None, timeout: float = DEFAULT_TIME
     )
     response.raise_for_status()
     return response.json()
+
+
+def get_text(url: str, params: dict | None = None, timeout: float = DEFAULT_TIMEOUT_S) -> str:
+    """GET a text document (e.g. XML). Raises requests.HTTPError on non-2xx."""
+    response = requests.get(
+        url, params=params, timeout=timeout, headers={"User-Agent": USER_AGENT}
+    )
+    response.raise_for_status()
+    return response.text
