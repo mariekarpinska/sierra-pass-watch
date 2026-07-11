@@ -164,13 +164,22 @@ section{ position:relative; }
 .field label{ font-size:.74rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--sage); padding-left:.2rem; }
 .select-wrap{ position:relative; }
 .select-wrap::after{ content:"▾"; position:absolute; right:1rem; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--sage); font-size:.8rem; }
-.route-form select{
+.route-form select,
+.route-form input[type="datetime-local"]{
   appearance:none; width:100%; font-family:var(--serif); font-size:1.35rem; font-weight:500; color:var(--head);
   padding:.7rem 2.4rem .7rem 1rem; border:1.5px solid var(--line); border-radius:12px; background:var(--card-2);
   cursor:pointer; transition:border-color .2s, box-shadow .2s;
 }
-.route-form select option{ color:#1a1a1a; }
-.route-form select:focus{ outline:none; border-color:var(--sage); box-shadow:0 0 0 3px rgba(157,177,131,.2); }
+/* The open dropdown list: cream text on a dark card, matching the app (the OS
+   would otherwise paint near-black option text on the dark control). */
+.route-form select option{ background:var(--card); color:var(--ink); }
+.route-form input[type="datetime-local"]{
+  color-scheme:dark;      /* dark-themed native picker + a legible calendar icon */
+  padding-right:1rem;     /* no dropdown caret here, so no room to reserve for it */
+  font-size:1.1rem;       /* the date+time string is longer; keep it on one line */
+}
+.route-form select:focus,
+.route-form input[type="datetime-local"]:focus{ outline:none; border-color:var(--sage); box-shadow:0 0 0 3px rgba(157,177,131,.2); }
 .swap{ display:grid; place-items:center; width:44px; height:44px; margin-bottom:.35rem; border-radius:50%; border:1.5px solid var(--line); background:var(--card-2); color:var(--sage); cursor:pointer; transition:transform .3s ease, background .2s, color .2s; }
 .swap:hover{ transform:rotate(180deg); background:var(--sage); color:var(--pine-deep); }
 .plan-btn{ height:52px; white-space:nowrap; }

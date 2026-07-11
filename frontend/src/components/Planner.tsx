@@ -157,15 +157,13 @@ export function Planner({ onPlan }: Props) {
         </div>
         <div className="field">
           <label htmlFor="departSel">Departing</label>
-          <div className="select-wrap">
-            <input
-              id="departSel"
-              name="departure"
-              type="datetime-local"
-              value={departure}
-              onChange={(e) => setDeparture(e.target.value)}
-            />
-          </div>
+          <input
+            id="departSel"
+            name="departure"
+            type="datetime-local"
+            value={departure}
+            onChange={(e) => setDeparture(e.target.value)}
+          />
         </div>
         <button type="submit" className="btn btn-primary plan-btn" disabled={!fromId || !toId}>
           Get the forecast
