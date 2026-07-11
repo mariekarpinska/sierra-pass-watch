@@ -3,6 +3,27 @@
 A running record of how security was considered as this repository evolved.
 Each change that touches the security posture appends a dated section.
 
+## 2026-07-10 - feat/api-and-wire-routes (API posture)
+
+- **CORS: explicit allowlist, never a wildcard.** CORS stays off by default,
+  since the frontend and API are served from one origin behind a proxy. When it
+  is enabled (via `CORS_ALLOWED_ORIGINS`), it is an explicit list of origins
+  (never `*`), `GET` only, and the only allowed request header is
+  `X-Correlation-Id` (the one custom header the client sends). No credentials are
+  allowed. So even an allowlisted origin can make only read requests with the one
+  expected header.
+- **Read-only database access, parameterized SQL only.** The API issues `SELECT`
+  statements through a repository, with bound parameters, never string-built SQL.
+  Production points `DATABASE_URL` at a read-only role; the local default is the
+  docker-compose account.
+- **Errors do not leak internals.** Any unhandled exception becomes a generic
+  JSON 500; the traceback goes to the server log (tagged with the correlation id),
+  never to the client. uvicorn runs with `--no-server-header`.
+- **The correlation id is sanitized before use.** The incoming `X-Correlation-Id`
+  is accepted only if it is a canonical UUID; anything else is replaced with a
+  fresh UUID before it is logged or reflected on the response, so a malformed
+  header cannot crash a request or inject into a response header.
+
 ## 2026-07-09 — feat/data-plane (pipeline posture)
 
 - **Keyless sources by design.** Every upstream (Caltrans CWWP2, NWS,

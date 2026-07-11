@@ -1,0 +1,506 @@
+{
+  "description": "Sierra Nevada route catalogue, exported from pipeline/routes.ROUTES. The API serves this as GET /api/routes; a pipeline test asserts it matches the code so it cannot drift.",
+  "routes": [
+    {
+      "id": "I-80",
+      "name": "Donner Pass",
+      "road_no": "80",
+      "seasonal": false,
+      "note": "Only freeway across the range \u00b7 year-round",
+      "towns": [
+        {
+          "name": "Colfax",
+          "lat": 39.1002,
+          "lon": -120.9533
+        },
+        {
+          "name": "Donner Summit",
+          "lat": 39.3163,
+          "lon": -120.3208
+        },
+        {
+          "name": "Truckee",
+          "lat": 39.328,
+          "lon": -120.1833
+        }
+      ]
+    },
+    {
+      "id": "US-50",
+      "name": "Echo Summit",
+      "road_no": "50",
+      "seasonal": false,
+      "note": "Year-round to South Lake Tahoe",
+      "towns": [
+        {
+          "name": "Placerville",
+          "lat": 38.7296,
+          "lon": -120.7985
+        },
+        {
+          "name": "Echo Summit",
+          "lat": 38.8124,
+          "lon": -120.0307
+        },
+        {
+          "name": "South Lake Tahoe",
+          "lat": 38.9399,
+          "lon": -119.9772
+        }
+      ]
+    },
+    {
+      "id": "US-395",
+      "name": "Eastern Sierra corridor",
+      "road_no": "395",
+      "seasonal": false,
+      "note": "Runs the length of the range's eastern base \u00b7 year-round",
+      "towns": [
+        {
+          "name": "Bridgeport",
+          "lat": 38.2566,
+          "lon": -119.2313
+        },
+        {
+          "name": "Lee Vining",
+          "lat": 37.9558,
+          "lon": -119.1188
+        },
+        {
+          "name": "Bishop",
+          "lat": 37.3636,
+          "lon": -118.3951
+        },
+        {
+          "name": "Lone Pine",
+          "lat": 36.6061,
+          "lon": -118.0626
+        }
+      ]
+    },
+    {
+      "id": "US-6",
+      "name": "Bishop \u2192 Nevada",
+      "road_no": "6",
+      "seasonal": false,
+      "note": "Short stretch near Bishop into Nevada",
+      "towns": [
+        {
+          "name": "Bishop",
+          "lat": 37.3636,
+          "lon": -118.3951
+        }
+      ]
+    },
+    {
+      "id": "SR-70",
+      "name": "Feather River Canyon",
+      "road_no": "70",
+      "seasonal": false,
+      "note": "Lowest / northernmost crossing \u00b7 generally year-round",
+      "towns": [
+        {
+          "name": "Oroville",
+          "lat": 39.5138,
+          "lon": -121.5564
+        },
+        {
+          "name": "Quincy",
+          "lat": 39.9368,
+          "lon": -120.9456
+        }
+      ]
+    },
+    {
+      "id": "SR-88",
+      "name": "Carson Pass",
+      "road_no": "88",
+      "seasonal": true,
+      "note": "~8,650 ft \u00b7 seasonal",
+      "towns": [
+        {
+          "name": "Jackson",
+          "lat": 38.3489,
+          "lon": -120.7741
+        },
+        {
+          "name": "Kirkwood",
+          "lat": 38.6868,
+          "lon": -120.0657
+        },
+        {
+          "name": "Carson Pass",
+          "lat": 38.694,
+          "lon": -119.9842
+        }
+      ]
+    },
+    {
+      "id": "SR-4",
+      "name": "Ebbetts Pass",
+      "road_no": "4",
+      "seasonal": true,
+      "note": "~8,730 ft \u00b7 narrow & seasonal",
+      "towns": [
+        {
+          "name": "Arnold",
+          "lat": 38.2552,
+          "lon": -120.3502
+        },
+        {
+          "name": "Bear Valley",
+          "lat": 38.4602,
+          "lon": -120.0419
+        },
+        {
+          "name": "Ebbetts Pass",
+          "lat": 38.5466,
+          "lon": -119.8085
+        }
+      ]
+    },
+    {
+      "id": "SR-108",
+      "name": "Sonora Pass",
+      "road_no": "108",
+      "seasonal": true,
+      "note": "~9,620 ft \u00b7 seasonal",
+      "towns": [
+        {
+          "name": "Sonora",
+          "lat": 37.9841,
+          "lon": -120.3822
+        },
+        {
+          "name": "Pinecrest",
+          "lat": 38.1929,
+          "lon": -119.9876
+        },
+        {
+          "name": "Sonora Pass",
+          "lat": 38.3283,
+          "lon": -119.636
+        }
+      ]
+    },
+    {
+      "id": "SR-120",
+      "name": "Tioga Pass",
+      "road_no": "120",
+      "seasonal": true,
+      "note": "~9,945 ft \u00b7 highest pass \u00b7 through Yosemite \u00b7 closed ~Nov\u2013May",
+      "towns": [
+        {
+          "name": "Groveland",
+          "lat": 37.8377,
+          "lon": -120.2266
+        },
+        {
+          "name": "Tuolumne Meadows",
+          "lat": 37.8736,
+          "lon": -119.35
+        },
+        {
+          "name": "Tioga Pass",
+          "lat": 37.9105,
+          "lon": -119.2573
+        },
+        {
+          "name": "Lee Vining",
+          "lat": 37.9558,
+          "lon": -119.1188
+        }
+      ]
+    },
+    {
+      "id": "SR-178",
+      "name": "Walker Pass",
+      "road_no": "178",
+      "seasonal": false,
+      "note": "~5,250 ft \u00b7 only paved crossing in the southern Sierra",
+      "towns": [
+        {
+          "name": "Lake Isabella",
+          "lat": 35.6188,
+          "lon": -118.4729
+        },
+        {
+          "name": "Walker Pass",
+          "lat": 35.6597,
+          "lon": -118.029
+        },
+        {
+          "name": "Ridgecrest",
+          "lat": 35.6225,
+          "lon": -117.6709
+        }
+      ]
+    },
+    {
+      "id": "SR-49",
+      "name": "Golden Chain Highway",
+      "road_no": "49",
+      "seasonal": false,
+      "note": "Western Gold Country foothills",
+      "towns": [
+        {
+          "name": "Grass Valley",
+          "lat": 39.2188,
+          "lon": -121.0608
+        },
+        {
+          "name": "Auburn",
+          "lat": 38.8966,
+          "lon": -121.0769
+        },
+        {
+          "name": "Sonora",
+          "lat": 37.9841,
+          "lon": -120.3822
+        },
+        {
+          "name": "Mariposa",
+          "lat": 37.4849,
+          "lon": -119.9663
+        }
+      ]
+    },
+    {
+      "id": "SR-89",
+      "name": "Tahoe \u2194 Monitor Pass",
+      "road_no": "89",
+      "seasonal": true,
+      "note": "Links Tahoe to Monitor Pass (~8,310 ft) & Markleeville",
+      "towns": [
+        {
+          "name": "Tahoe City",
+          "lat": 39.1658,
+          "lon": -120.1428
+        },
+        {
+          "name": "Markleeville",
+          "lat": 38.6952,
+          "lon": -119.7782
+        },
+        {
+          "name": "Monitor Pass",
+          "lat": 38.673,
+          "lon": -119.619
+        }
+      ]
+    },
+    {
+      "id": "SR-28",
+      "name": "North/East Lake Tahoe",
+      "road_no": "28",
+      "seasonal": false,
+      "note": "Rings the north/east shore of Lake Tahoe",
+      "towns": [
+        {
+          "name": "Tahoe City",
+          "lat": 39.1658,
+          "lon": -120.1428
+        },
+        {
+          "name": "Kings Beach",
+          "lat": 39.2377,
+          "lon": -120.0263
+        }
+      ]
+    },
+    {
+      "id": "SR-207",
+      "name": "Kingsbury Grade",
+      "road_no": "207",
+      "seasonal": false,
+      "note": "Climbs out of the Tahoe basin",
+      "towns": [
+        {
+          "name": "Stateline",
+          "lat": 38.9596,
+          "lon": -119.9398
+        }
+      ]
+    },
+    {
+      "id": "SR-267",
+      "name": "Brockway Summit",
+      "road_no": "267",
+      "seasonal": false,
+      "note": "Climbs out of the Tahoe basin near Truckee",
+      "towns": [
+        {
+          "name": "Truckee",
+          "lat": 39.328,
+          "lon": -120.1833
+        },
+        {
+          "name": "Kings Beach",
+          "lat": 39.2377,
+          "lon": -120.0263
+        }
+      ]
+    },
+    {
+      "id": "SR-431",
+      "name": "Mount Rose Highway",
+      "road_no": "431",
+      "seasonal": true,
+      "note": "Carson Range, Nevada \u00b7 no California crash data",
+      "towns": [
+        {
+          "name": "Incline Village",
+          "lat": 39.251,
+          "lon": -119.946
+        },
+        {
+          "name": "Mount Rose Summit",
+          "lat": 39.314,
+          "lon": -119.897
+        }
+      ]
+    },
+    {
+      "id": "SR-140",
+      "name": "Yosemite via El Portal",
+      "road_no": "140",
+      "seasonal": false,
+      "note": "Merced River canyon \u00b7 lower snow-free approach",
+      "towns": [
+        {
+          "name": "Mariposa",
+          "lat": 37.4849,
+          "lon": -119.9663
+        },
+        {
+          "name": "El Portal",
+          "lat": 37.6757,
+          "lon": -119.7831
+        }
+      ]
+    },
+    {
+      "id": "SR-41",
+      "name": "Yosemite via Wawona",
+      "road_no": "41",
+      "seasonal": false,
+      "note": "South entrance from Fresno",
+      "towns": [
+        {
+          "name": "Oakhurst",
+          "lat": 37.3277,
+          "lon": -119.6493
+        },
+        {
+          "name": "Wawona",
+          "lat": 37.5377,
+          "lon": -119.6566
+        }
+      ]
+    },
+    {
+      "id": "SR-180",
+      "name": "Kings Canyon",
+      "road_no": "180",
+      "seasonal": true,
+      "note": "Into Kings Canyon (Cedar Grove seasonal)",
+      "towns": [
+        {
+          "name": "Grant Grove",
+          "lat": 36.7409,
+          "lon": -118.9618
+        },
+        {
+          "name": "Cedar Grove",
+          "lat": 36.7944,
+          "lon": -118.684
+        }
+      ]
+    },
+    {
+      "id": "SR-198",
+      "name": "Sequoia / Generals Hwy",
+      "road_no": "198",
+      "seasonal": false,
+      "note": "Into Sequoia; connects to SR-180 via Generals Highway",
+      "towns": [
+        {
+          "name": "Three Rivers",
+          "lat": 36.4386,
+          "lon": -118.902
+        },
+        {
+          "name": "Giant Forest",
+          "lat": 36.565,
+          "lon": -118.773
+        }
+      ]
+    },
+    {
+      "id": "SR-168W",
+      "name": "Shaver / Huntington Lakes",
+      "road_no": "168",
+      "seasonal": false,
+      "note": "Western SR-168 to Shaver & Huntington Lakes",
+      "towns": [
+        {
+          "name": "Shaver Lake",
+          "lat": 37.1058,
+          "lon": -119.3179
+        },
+        {
+          "name": "Huntington Lake",
+          "lat": 37.233,
+          "lon": -119.2204
+        }
+      ]
+    },
+    {
+      "id": "SR-168E",
+      "name": "Bishop \u2192 South Lake",
+      "road_no": "168",
+      "seasonal": true,
+      "note": "Eastern SR-168 (Bishop to South Lake / Lake Sabrina) \u00b7 disconnected from west",
+      "towns": [
+        {
+          "name": "Bishop",
+          "lat": 37.3636,
+          "lon": -118.3951
+        },
+        {
+          "name": "South Lake",
+          "lat": 37.169,
+          "lon": -118.564
+        }
+      ]
+    },
+    {
+      "id": "SR-203",
+      "name": "Mammoth Lakes",
+      "road_no": "203",
+      "seasonal": false,
+      "note": "Into Mammoth Lakes",
+      "towns": [
+        {
+          "name": "Mammoth Lakes",
+          "lat": 37.6485,
+          "lon": -118.9721
+        }
+      ]
+    },
+    {
+      "id": "SR-158",
+      "name": "June Lake Loop",
+      "road_no": "158",
+      "seasonal": true,
+      "note": "June Lake Loop \u00b7 seasonal",
+      "towns": [
+        {
+          "name": "June Lake",
+          "lat": 37.7805,
+          "lon": -119.0718
+        }
+      ]
+    }
+  ]
+}
