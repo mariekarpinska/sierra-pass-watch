@@ -30,7 +30,8 @@ docker compose up -d
 
 # 2. Backend  → http://localhost:5080
 python -m venv .venv && source .venv/bin/activate    # .venv\Scripts\Activate.ps1 on Windows
-cd backend && pip install -e ".[dev]"
+pip install -e .                                      # the pipeline package: the API imports pipeline.regime
+cd backend && pip install -e ".[dev]"                 # then the API itself
 uvicorn api.main:app --port 5080 --no-server-header
 
 # 3. Frontend → http://localhost:5173 (proxies /api to the backend)
