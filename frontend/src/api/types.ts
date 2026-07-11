@@ -9,6 +9,24 @@
  * server.
  */
 
+/**
+ * Weather regimes, ordered worst-first for display. ONE classifier
+ * (pipeline/regime.py, imported by both the pipeline and the API) produces
+ * these labels on the live forecast and on each historical crash;
+ * shared/weather-regime-cases.json pins its behaviour case by case.
+ */
+export const REGIME_CODES = [
+  "HEAVY_SNOW_LOW_VIS",
+  "SNOW",
+  "ICE_FREEZING",
+  "HIGH_WIND",
+  "RAIN_FOG_LOW_VIS",
+  "CLEAR_DRY",
+  "UNKNOWN",
+] as const;
+
+export type RegimeCode = (typeof REGIME_CODES)[number];
+
 /** A forecast point / populated place along a route. */
 export interface Town {
   name: string;
@@ -45,4 +63,33 @@ export interface Segment {
   name: string;
   lat: number;
   lon: number;
+}
+
+/** One forecast sample for a segment at a point in time. */
+export interface ForecastPoint {
+  validTimeUtc: string;
+  temperatureF: number | null;
+  windGustMph: number | null;
+  snowfallRateInHr: number | null;
+  visibilityMiles: number | null;
+  /** Descriptive short text, e.g. "Snow". Never a judgement. */
+  shortForecast: string | null;
+  regime: RegimeCode;
+}
+
+/** Forecast for one segment over the requested window. */
+export interface SegmentForecast {
+  segment: Segment;
+  /** Worst regime across `points`: what the journey view keys on. */
+  regime: RegimeCode;
+  points: ForecastPoint[];
+}
+
+/** GET /api/forecast?route=&from=&to= */
+export interface ForecastResponse {
+  routeId: string;
+  fromSegmentId: string;
+  toSegmentId: string;
+  generatedAtUtc: string;
+  segments: SegmentForecast[];
 }
