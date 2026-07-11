@@ -47,10 +47,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # database connection is made until the first query).
         app.state.catalog = RouteCatalog.load(settings.shared_dir)
         app.state.pool = create_pool(settings.database_url)
-        await app.state.pool.open()
-        yield
-        # Shutdown: close the pool cleanly.
-        await app.state.pool.close()
+        try:
+            await app.state.pool.open()
+            yield
+        finally:
+            # Close on normal shutdown, and also if open() failed at startup, so
+            # a failed start never leaks the pool.
+            await app.state.pool.close()
 
     app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
 
