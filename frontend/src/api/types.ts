@@ -85,7 +85,7 @@ export interface SegmentForecast {
   shortForecast: string | null;
 }
 
-/** GET /api/forecast?route=&from=&to=&departure= */
+/** GET /api/forecast?route=&from=&to=&departure= (single highway) */
 export interface ForecastResponse {
   routeId: string;
   fromSegmentId: string;
@@ -94,4 +94,19 @@ export interface ForecastResponse {
   departureUtc: string;
   generatedAtUtc: string;
   segments: SegmentForecast[];
+}
+
+/**
+ * GET /api/journey?from=&to=&departure= (may cross several highways).
+ * The anchor towns along the OSRM-routed drive, each with the same
+ * departure-window summary as a single-route stop.
+ */
+export interface JourneyResponse {
+  fromId: string;
+  toId: string;
+  departureUtc: string;
+  generatedAtUtc: string;
+  totalMiles: number;
+  totalMinutes: number;
+  stops: SegmentForecast[];
 }

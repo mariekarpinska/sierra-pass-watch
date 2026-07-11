@@ -1,14 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { getRoutes } from '../api/routes'
-import { getSegments } from '../api/segments'
+import { getTowns } from '../api/towns'
 import { isAppError } from '../api/client'
-import type { Route, Segment } from '../api/types'
+import type { Segment } from '../api/types'
 
 export interface Plan {
-  routeId: string
   fromId: string
   toId: string
-  /** Departure instant, ISO 8601 UTC (what /api/forecast reads). */
+  /** Departure instant, ISO 8601 UTC (what /api/journey reads). */
   departureUtc: string
 }
 
@@ -22,17 +20,7 @@ function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-// The route's towns in travel order (from /api/routes) carry no segment id, and
-// /api/segments carries ids but not travel order, so join them by name.
-function orderedSegments(route: Route, segments: Segment[]): Segment[] {
-  return route.towns
-    .map((town) => segments.find((s) => s.name === town.name))
-    .filter((s): s is Segment => s !== undefined)
-}
-
 export function Planner({ onPlan }: Props) {
-  const [routes, setRoutes] = useState<Route[]>([])
-  const [routeId, setRouteId] = useState('')
   const [towns, setTowns] = useState<Segment[]>([])
   const [fromId, setFromId] = useState('')
   const [toId, setToId] = useState('')
@@ -40,36 +28,17 @@ export function Planner({ onPlan }: Props) {
   const [flash, setFlash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Load the catalogue once; default to the first route.
+  // Load the town directory once; default to the two ends of the list.
   useEffect(() => {
     let cancelled = false
-    getRoutes()
+    getTowns()
       .then((loaded) => {
         if (cancelled) return
-        setRoutes(loaded)
-        if (loaded.length) setRouteId(loaded[0].id)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(isAppError(err) ? err.message : 'Could not load routes.')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // When the route changes, load its towns and default to the whole span.
-  useEffect(() => {
-    if (!routeId) return
-    const route = routes.find((r) => r.id === routeId)
-    if (!route) return
-    let cancelled = false
-    getSegments(routeId)
-      .then((segments) => {
-        if (cancelled) return
-        const ordered = orderedSegments(route, segments)
-        setTowns(ordered)
-        setFromId(ordered[0]?.id ?? '')
-        setToId(ordered[ordered.length - 1]?.id ?? '')
+        setTowns(loaded)
+        if (loaded.length) {
+          setFromId(loaded[0].id)
+          setToId(loaded[loaded.length - 1].id)
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(isAppError(err) ? err.message : 'Could not load towns.')
@@ -77,17 +46,25 @@ export function Planner({ onPlan }: Props) {
     return () => {
       cancelled = true
     }
-  }, [routeId, routes])
+  }, [])
+
+  const flashFor = (message: string) => {
+    setFlash(message)
+    window.setTimeout(() => setFlash(null), 3200)
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    if (!departure) {
+      flashFor('Pick a departure time.')
+      return
+    }
     if (fromId === toId) {
-      setFlash('Pick two different places to draw a route.')
-      window.setTimeout(() => setFlash(null), 3200)
+      flashFor('Pick two different places to draw a route.')
       return
     }
     // datetime-local is local time; toISOString gives the backend a UTC instant.
-    onPlan({ routeId, fromId, toId, departureUtc: new Date(departure).toISOString() })
+    onPlan({ fromId, toId, departureUtc: new Date(departure).toISOString() })
   }
 
   const swap = () => {
@@ -111,22 +88,13 @@ export function Planner({ onPlan }: Props) {
         <span className="kicker">Set your line</span>
         <h2>Where are you headed?</h2>
         <p className="sub">
-          Pick a route through the Sierra Nevada, a start and a destination, and when you
-          are leaving. We'll pull the live forecast for the six hours from your departure.
+          Pick where you are starting and where you are going, anywhere in the range, and
+          when you are leaving. We'll trace the drive across whatever highways it takes and
+          pull the live forecast for the six hours from your departure.
         </p>
       </div>
 
       <form className="route-form" onSubmit={submit} autoComplete="off">
-        <div className="field">
-          <label htmlFor="routeSel">Route</label>
-          <div className="select-wrap">
-            <select id="routeSel" name="route" value={routeId} onChange={(e) => setRouteId(e.target.value)}>
-              {routes.map((r) => (
-                <option key={r.id} value={r.id}>{r.name} ({r.id})</option>
-              ))}
-            </select>
-          </div>
-        </div>
         <div className="field">
           <label htmlFor="startSel">Starting from</label>
           <div className="select-wrap">

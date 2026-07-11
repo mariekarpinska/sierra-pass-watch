@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import golden from "../../../shared/weather-regime-cases.json";
 import { REGIME_CODES } from "./types";
-import type { ForecastResponse, Route, Segment } from "./types";
+import type { ForecastResponse, JourneyResponse, Route, Segment } from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
 // control. This line runs before the imports below, so the fetchers pick up the
@@ -17,6 +17,8 @@ import { api } from "./client";
 import { getRoutes } from "./routes";
 import { getSegments } from "./segments";
 import { getForecast } from "./forecast";
+import { getTowns } from "./towns";
+import { getJourney } from "./journey";
 
 // Sample responses the fake will return, in the same shape the real API sends.
 const ROUTES: Route[] = [
@@ -50,6 +52,20 @@ const FORECAST: ForecastResponse = {
       shortForecast: "Snow",
     },
   ],
+};
+
+const TOWNS: Segment[] = [
+  { id: "colfax", routeId: "", name: "Colfax", lat: 39.1002, lon: -120.9533 },
+  { id: "south-lake-tahoe", routeId: "", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
+];
+const JOURNEY: JourneyResponse = {
+  fromId: "colfax",
+  toId: "south-lake-tahoe",
+  departureUtc: "2026-01-12T15:00:00+00:00",
+  generatedAtUtc: "2026-01-12T15:02:00+00:00",
+  totalMiles: 94.2,
+  totalMinutes: 130,
+  stops: [{ ...FORECAST.segments[0], segment: TOWNS[0] }],
 };
 
 // A typed handle to the fake `get`, so we can set what it returns and check how
@@ -109,6 +125,32 @@ describe("getForecast", () => {
   });
 });
 
+describe("getTowns", () => {
+  it("calls /api/towns and returns the directory", async () => {
+    mockGet.mockResolvedValue({ data: TOWNS });
+
+    const towns = await getTowns();
+
+    expect(mockGet).toHaveBeenCalledWith("/api/towns");
+    expect(towns[0].id).toBe("colfax");
+  });
+});
+
+describe("getJourney", () => {
+  it("sends from, to and departure as query params and returns the journey", async () => {
+    mockGet.mockResolvedValue({ data: JOURNEY });
+
+    const departure = "2026-01-12T15:00:00.000Z";
+    const journey = await getJourney("colfax", "south-lake-tahoe", departure);
+
+    expect(mockGet).toHaveBeenCalledWith("/api/journey", {
+      params: { from: "colfax", to: "south-lake-tahoe", departure },
+    });
+    expect(journey.stops[0].segment.name).toBe("Colfax");
+    expect(journey.totalMiles).toBe(94.2);
+  });
+});
+
 // REGIME_CODES is a hand-written mirror of pipeline/regime.py's REGIMES. The
 // shared golden file exercises every regime, so set-equality against its
 // expected labels catches a vocabulary change (a regime added, renamed or
@@ -136,10 +178,10 @@ describe("no safety judgement in the contract", () => {
     return [];
   };
 
-  it("routes, segments and the forecast carry no score/rating/verdict keys", () => {
+  it("routes, segments, forecast and journey carry no score/rating/verdict keys", () => {
     // Gather every key name from all sample payloads, lower-cased.
-    const all = [...keys(ROUTES), ...keys(SEGMENTS), ...keys(FORECAST)].map((k) =>
-      k.toLowerCase(),
+    const all = [...keys(ROUTES), ...keys(SEGMENTS), ...keys(FORECAST), ...keys(JOURNEY)].map(
+      (k) => k.toLowerCase(),
     );
 
     // None of them should contain a forbidden word.
