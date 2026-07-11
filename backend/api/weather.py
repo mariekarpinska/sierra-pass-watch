@@ -286,27 +286,34 @@ class ForecastService:
         if from_index > to_index:
             span = list(reversed(span))
 
-        # Inclusive hour stamps: WINDOW_HOURS hours starting at the departure
-        # hour (departure plus five more when WINDOW_HOURS is 6).
-        start_hour = _hour_stamp(departure)
-        end_hour = _hour_stamp(departure + timedelta(hours=WINDOW_HOURS - 1))
-
-        # The per-town fetches are independent, so run them concurrently:
-        # serializing them stacks upstream latency per town — and when
-        # Open-Meteo hangs, stacks its 10 s timeouts past the frontend's own
-        # request timeout. _forecast_for never raises (a failed town degrades
-        # to UNKNOWN), so gather cannot blow up the response.
-        town_forecasts = await asyncio.gather(
-            *(self._forecast_for(segment, start_hour, end_hour) for segment in span)
-        )
-
         return ForecastResponse(
             route_id=route.id,
             from_segment_id=from_segment_id,
             to_segment_id=to_segment_id,
             departure_utc=departure.isoformat(),
             generated_at_utc=datetime.now(timezone.utc).isoformat(),
-            segments=list(town_forecasts),
+            segments=await self.forecast_towns(span, departure),
+        )
+
+    async def forecast_towns(
+        self, towns: list[Segment], departure: datetime
+    ) -> list[SegmentForecast]:
+        """Each town's departure-window summary. Shared by the single-route
+        forecast and the multi-highway journey, so both label conditions the
+        same way. Inclusive hour stamps: WINDOW_HOURS hours starting at the
+        departure hour (departure plus five more when WINDOW_HOURS is 6).
+
+        The per-town fetches are independent, so they run concurrently:
+        serializing them stacks upstream latency per town — and when Open-Meteo
+        hangs, stacks its 10 s timeouts past the frontend's own request
+        timeout. _forecast_for never raises (a failed town degrades to
+        UNKNOWN), so gather cannot blow up the response."""
+        start_hour = _hour_stamp(departure)
+        end_hour = _hour_stamp(departure + timedelta(hours=WINDOW_HOURS - 1))
+        return list(
+            await asyncio.gather(
+                *(self._forecast_for(town, start_hour, end_hour) for town in towns)
+            )
         )
 
     async def _forecast_for(

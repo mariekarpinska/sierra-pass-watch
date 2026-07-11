@@ -87,3 +87,19 @@ class ForecastResponse(CamelModel):
     departure_utc: str
     generated_at_utc: str
     segments: list[SegmentForecast]
+
+
+class JourneyResponse(CamelModel):
+    """GET /api/journey?from=&to=&departure=
+
+    A multi-highway trip: the anchor towns along the drive (OSRM-routed at build
+    time), each with the same departure-window summary as a single-route stop.
+    """
+
+    from_id: str
+    to_id: str
+    departure_utc: str
+    generated_at_utc: str
+    total_miles: float
+    total_minutes: int
+    stops: list[SegmentForecast]
