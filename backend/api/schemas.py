@@ -1,41 +1,61 @@
-"""Response models — the wire contract, one base class for the convention.
+"""Response models: the shape of the JSON the API returns.
 
-Code is snake_case Python; the wire is camelCase JSON (what the frontend's
-TypeScript types declare). `CamelModel` centralizes that translation so no
-endpoint ever hand-writes an alias.
-
-→ validate, serialize, and structure the data passing between the client and the server
+Python code is snake_case; the JSON on the wire is camelCase (what the frontend's
+TypeScript types expect). CamelModel does that translation in one place, so no
+endpoint has to spell out an alias.
 """
-# keeps type hints as strings so they never eval at runtime
 from __future__ import annotations
 
-# BaseModel gives us validation and serialization, ConfigDict holds the settings
 from pydantic import BaseModel, ConfigDict
-# ready made helper that turns snake_case field names into camelCase
 from pydantic.alias_generators import to_camel
 
 
-# shared base so the snake to camel rule lives in one place, not on every model
 class CamelModel(BaseModel):
-    """Base for every response model: `timestamp_utc` here, `timestampUtc` on the wire."""
+    """Base model that turns snake_case fields into camelCase JSON keys
+    (`timestamp_utc` becomes `timestampUtc`)."""
 
-    # per model config, pydantic reads this to change default behavior
     model_config = ConfigDict(
-        # run every field name through to_camel to produce the json alias
         alias_generator=to_camel,
-        # also accept the pythonic name on input so tests can build models
-        # with snake_case while the wire still stays camelCase
+        # Also accept the snake_case name as input, so tests can build models
+        # with pythonic names.
         populate_by_name=True,
     )
 
 
-# concrete payload returned by the health endpoint, inherits the camel rule
 class Health(CamelModel):
     """Contract for GET /api/health, mirrored by the frontend."""
 
-    # ok marker string, healthy when things are fine
     status: str
-    # name of the service that answered
     service: str
-    # iso 8601 timestamp, serializes out as timestampUtc
     timestamp_utc: str
+
+
+class Town(CamelModel):
+    """A forecast point / populated place along a route."""
+
+    name: str
+    lat: float
+    lon: float
+
+
+class Route(CamelModel):
+    """One tracked Sierra Nevada road, from the shared catalogue."""
+
+    id: str
+    name: str
+    road_no: str
+    seasonal: bool
+    note: str
+    towns: list[Town]
+
+
+class Segment(CamelModel):
+    """An anchor waypoint: a town/pass where weather is sampled. Ids are
+    "{routeId}:{town-slug}", e.g. "I-80:donner-summit". Crashes are located by
+    per-mile bin (ADR-0007); the anchor is only the weather point."""
+
+    id: str
+    route_id: str
+    name: str
+    lat: float
+    lon: float

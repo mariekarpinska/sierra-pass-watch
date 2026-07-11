@@ -165,3 +165,11 @@ becomes the correct tool. The decision here is scale-specific, not dogmatic.
   added operational weight with *nothing left for it to do*.
 - **Everything targets Postgres.** One storage engine ([0005](0005-database.md))
   under both paths keeps the mental model small.
+- **The API reads dbt's tables with plain SQL, not an ORM (e.g. SQLAlchemy).**
+  Because dbt owns the transforms and the analytics schema, the API is a
+  read-only window over tables dbt owns, and the queries are simple SELECTs. An
+  ORM's main value is managing writes, migrations, and object mapping (none of
+  which this layer does), so it would add indirection and a second source of
+  truth for the schema, for no benefit. Parameterized psycopg gives the same
+  injection safety without it. The queries stay behind a repository (a
+  dependency-injection seam) so they remain testable and swappable in tests.

@@ -1,62 +1,108 @@
-"""Sierra Corridor API — FastAPI application factory.
+"""Sierra Safe API: builds the FastAPI app.
 
-Boilerplate stage: one endpoint (GET /api/health) that the frontend calls
-through its axios interceptor layer to prove the full round-trip works.
-Real endpoints land feature by feature, each matching the contract the
-frontend defines in frontend/src/api/types.ts.
+Endpoints match the frontend contract (frontend/src/api/types.ts) field for
+field. Live now: /api/health, /api/routes, /api/segments. Later branches add
+forecast, crash-patterns, hotspots and the alerts feed.
 
 Run locally (the Vite dev server proxies /api here):
 
     uvicorn api.main:app --port 5080 --no-server-header
 
-`--no-server-header` keeps the server implementation out of responses —
-the same hardening the reverse proxy applies in production.
-
-→ Serves as the entry point and core configuration file of the web application.  
-It initializes the backend server, registers routes, attaches middlewares, and 
-coordinates all the distinct pieces of your project.
+--no-server-header hides the server name from responses.
 """
-# pulls in future annotation behavior so type hints stay as strings, no runtime eval
 from __future__ import annotations
 
-# datetime for the current time, timezone so we can stamp it as utc
+import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-# the web framework class we build the app instance from
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-# our response model for the health endpoint, defined next door in schemas
-from api.schemas import Health
+from api.catalog import RouteCatalog, get_catalog
+from api.config import Settings
+from api.db import create_pool
+from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
+from api.schemas import Health, Route, Segment
+from api.segments import SegmentRepository, get_segment_repository
+
+log = logging.getLogger(__name__)
+
+# Add the correlation-id filter to the root logger once, at import, so every log
+# record carries the request's id (middleware.py). Done here, not inside
+# create_app, so building several apps (as the tests do) does not stack a new
+# filter each time.
+logging.getLogger().addFilter(CorrelationIdFilter())
 
 
-# factory (function that constructs and returns an obj) that assembles and hands back a fresh app, callable per test
-def create_app() -> FastAPI:
-    """Build the application. A factory (rather than a module-level app with
-    side effects) so tests can construct fresh, isolated instances."""
-    # construct the app, title and version just feed the auto generated docs
-    app = FastAPI(
-        title="Sierra Corridor API",
-        version="0.1.0",
-        # the SPA is the only intended client, docs pages left on as a dev convenience
-    )
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build the app. Using a factory (not a module-level app) lets each test
+    build its own isolated instance and pass its own Settings."""
+    settings = settings or Settings()
 
-    # register a GET route at /api/health, response_model pins and validates the shape
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup: load the catalogue once and create the pool (lazy, so no
+        # database connection is made until the first query).
+        app.state.catalog = RouteCatalog.load(settings.shared_dir)
+        app.state.pool = create_pool(settings.database_url)
+        try:
+            await app.state.pool.open()
+            yield
+        finally:
+            # Close on normal shutdown, and also if open() failed at startup, so
+            # a failed start never leaks the pool.
+            await app.state.pool.close()
+
+    app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
+
+    # Every request flows through this to get a correlation id.
+    app.add_middleware(CorrelationIdMiddleware)
+
+    # Only add CORS if origins are configured; the default same-origin setup
+    # needs none (see config.py). Even when enabled: an explicit origin
+    # allowlist, GET only, and only the one header the client sends. No
+    # credentials.
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allowed_origins,
+            allow_methods=["GET"],
+            allow_headers=["X-Correlation-Id"],
+        )
+
+    # Any unhandled error becomes a generic JSON 500. The traceback goes to the
+    # server log (tagged with the correlation id), never to the client.
+    @app.exception_handler(Exception)
+    async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+        log.exception("unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
     @app.get("/api/health", response_model=Health)
-    # the handler fastapi calls when that path is hit
     def health() -> Health:
-        # build and return the health payload, fastapi serializes it to json for us
         return Health(
-            # literal ok marker the frontend checks for
             status="healthy",
-            # which service answered, useful once there is more than one
             service="backend",
-            # now, in utc, as an iso 8601 string with an explicit offset
             timestamp_utc=datetime.now(timezone.utc).isoformat(),
         )
 
-    # give the fully wired app back to whoever called the factory
+    # The full route catalogue, served from memory.
+    @app.get("/api/routes", response_model=list[Route])
+    def routes(catalog: RouteCatalog = Depends(get_catalog)) -> list[Route]:
+        return catalog.routes
+
+    # Anchor waypoints from the dbt seed, optionally for one route. An unknown
+    # route returns an empty list, not a 404.
+    @app.get("/api/segments", response_model=list[Segment])
+    async def segments(
+        route: str | None = None,
+        repository: SegmentRepository = Depends(get_segment_repository),
+    ) -> list[Segment]:
+        return await repository.get(route)
+
     return app
 
 
-# module level instance uvicorn actually serves via api.main:app
+# The instance uvicorn serves (`uvicorn api.main:app`).
 app = create_app()
