@@ -1,23 +1,29 @@
-"""The forecast slice: Open-Meteo sampled along a journey, regime-labelled.
+"""The forecast slice: Open-Meteo sampled at each town over the departure
+window, summarized into the shape the weather card shows.
 
-The classifier is not re-implemented here: the API imports ``pipeline.regime``
+A driver picks a departure time, and each town card shows the conditions for a
+fixed window (WINDOW_HOURS) from that time, not for one instant: morning and
+evening on a pass are different drives. So the service fetches Open-Meteo hourly
+data for that window and reduces it per town to a worst-regime label plus a
+temperature range and the roughest wind/visibility/precip any hour reaches.
+
+The regime label is not re-implemented here: the API imports ``pipeline.regime``
 (the same module that labels live readings and the historical backfill), so the
 label on a forecast hour and the label on a crash record come from literally the
-same function. The golden contract (shared/weather-regime-cases.json) is still
-asserted by this package's tests as well as the pipeline's: the file is the spec
-either suite would catch a behaviour change against.
+same function. shared/weather-regime-cases.json is asserted by this package's
+tests as well as the pipeline's.
 
 Outbound-call posture (SECURITY.md): the base URL is fixed configuration and the
-query string is built from numeric coordinates, so no user-controlled string
-ever reaches the request and there is no SSRF surface. The HTTP client carries a
-hard timeout, and an upstream failure degrades that town to UNKNOWN rather than
-failing the journey.
+query is built from numeric coordinates and a validated time window, so no
+user-controlled string reaches the request and there is no SSRF surface. The
+HTTP client carries a hard timeout, and an upstream failure degrades that town
+to UNKNOWN rather than failing the journey.
 """
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 import httpx
@@ -27,7 +33,7 @@ from pydantic import BaseModel
 from pipeline.regime import REGIMES, classify_conditions
 
 from api.catalog import RouteCatalog, segments_for_route
-from api.schemas import ForecastPoint, ForecastResponse, Segment, SegmentForecast
+from api.schemas import ForecastResponse, Segment, SegmentForecast
 
 log = logging.getLogger(__name__)
 
@@ -35,8 +41,9 @@ _CM_TO_IN = 0.393701
 _KMH_TO_MPH = 0.621371
 _M_TO_MILES = 0.000621371
 
-#: Hours of forecast to return. The strip shows a 6-hour window.
-FORECAST_HOURS = 6
+#: Hours of forecast to summarize, counting from the departure hour. Six hours
+#: covers a Sierra corridor drive with room to spare.
+WINDOW_HOURS = 6
 
 #: A forecast ages; five minutes matches the frontend's staleTime and keeps
 #: repeat journeys from re-hitting Open-Meteo per render.
@@ -51,14 +58,18 @@ class HourlySample(BaseModel):
     snowfall_rate_in_hr: float | None
     wind_gust_mph: float | None
     visibility_miles: float | None
+    precip_probability_pct: float | None
     weather_code: int | None
 
 
 class ForecastProvider(Protocol):
     """The seam the forecast service depends on. Tests substitute a fake here,
-    exactly like the segments repository."""
+    exactly like the segments repository. start_hour and end_hour are inclusive
+    Open-Meteo hour stamps ("YYYY-MM-DDTHH:MM", UTC)."""
 
-    async def get_hourly(self, lat: float, lon: float) -> list[HourlySample]: ...
+    async def get_hourly(
+        self, lat: float, lon: float, start_hour: str, end_hour: str
+    ) -> list[HourlySample]: ...
 
 
 def parse_hourly(payload: dict) -> list[HourlySample]:
@@ -82,6 +93,7 @@ def parse_hourly(payload: dict) -> list[HourlySample]:
             snowfall_rate_in_hr=scaled("snowfall", i, _CM_TO_IN),
             wind_gust_mph=scaled("wind_gusts_10m", i, _KMH_TO_MPH),
             visibility_miles=scaled("visibility", i, _M_TO_MILES),
+            precip_probability_pct=number("precipitation_probability", i),
             weather_code=(int(code) if (code := number("weather_code", i)) is not None else None),
         )
         for i, time_value in enumerate(times)
@@ -117,22 +129,46 @@ def worst_regime(regimes: list[str]) -> str:
     return min(regimes, key=REGIMES.index)
 
 
+def _hour_stamp(dt: datetime) -> str:
+    """Open-Meteo's start_hour/end_hour format (minute precision, UTC)."""
+    return dt.strftime("%Y-%m-%dT%H:%M")
+
+
+def parse_departure(value: str) -> datetime:
+    """Parse the client's departure time into an aware UTC datetime. Accepts a
+    trailing "Z" or an offset; a value with no zone is read as UTC. Raises
+    ValueError on anything unparseable (the endpoint turns that into a 400)."""
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 class OpenMeteoForecastProvider:
     """Open-Meteo (keyless: the same upstream the pipeline polls). One GET per
-    (lat, lon); units converted at the edge so nothing downstream converts,
-    mirroring pipeline/sources/openmeteo.py."""
+    (lat, lon, window); units converted at the edge so nothing downstream
+    converts, mirroring pipeline/sources/openmeteo.py."""
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
 
-    async def get_hourly(self, lat: float, lon: float) -> list[HourlySample]:
+    async def get_hourly(
+        self, lat: float, lon: float, start_hour: str, end_hour: str
+    ) -> list[HourlySample]:
         response = await self._client.get(
             "/v1/forecast",
             params={
                 "latitude": round(lat, 4),
                 "longitude": round(lon, 4),
-                "hourly": "temperature_2m,snowfall,wind_gusts_10m,visibility,weather_code",
-                "forecast_hours": FORECAST_HOURS,
+                "hourly": (
+                    "temperature_2m,snowfall,wind_gusts_10m,visibility,"
+                    "weather_code,precipitation_probability"
+                ),
+                "start_hour": start_hour,
+                "end_hour": end_hour,
                 "wind_speed_unit": "kmh",
                 "timezone": "UTC",
             },
@@ -142,9 +178,9 @@ class OpenMeteoForecastProvider:
 
 
 class _TtlCache:
-    """Tiny per-coordinate TTL cache. Two concurrent misses may both fetch, an
-    accepted simplification: the point is bounding steady-state upstream
-    traffic, not perfect deduplication."""
+    """Tiny per-key TTL cache. Two concurrent misses may both fetch, an accepted
+    simplification: the point is bounding steady-state upstream traffic, not
+    perfect deduplication."""
 
     def __init__(self, ttl_seconds: float) -> None:
         self._ttl = ttl_seconds
@@ -164,10 +200,39 @@ class _TtlCache:
         self._entries[key] = (time.monotonic() + self._ttl, value)
 
 
+def _regime_for(sample: HourlySample) -> str:
+    # Air temperature stands in for road-surface temperature in a forecast (RWIS
+    # pavement sensors only exist for live readings).
+    return classify_conditions(
+        snowfall_rate_in_hr=sample.snowfall_rate_in_hr,
+        visibility_miles=sample.visibility_miles,
+        wind_gust_mph=sample.wind_gust_mph,
+        surface_temp_c=sample.temperature_c,
+    )
+
+
+def _max(values: list[float | None]) -> float | None:
+    present = [v for v in values if v is not None]
+    return max(present) if present else None
+
+
+def _min(values: list[float | None]) -> float | None:
+    present = [v for v in values if v is not None]
+    return min(present) if present else None
+
+
+def _round1(value: float | None) -> float | None:
+    return None if value is None else round(value, 1)
+
+
+def _round2(value: float | None) -> float | None:
+    return None if value is None else round(value, 2)
+
+
 class ForecastService:
     """Builds the /api/forecast response: resolves the journey span from the
-    route catalogue, samples Open-Meteo at each town, and labels every hour with
-    the shared regime classifier."""
+    route catalogue, samples Open-Meteo at each town over the departure window,
+    and reduces each town's hours to one card-shaped summary."""
 
     def __init__(self, catalog: RouteCatalog, provider: ForecastProvider) -> None:
         self._catalog = catalog
@@ -175,7 +240,11 @@ class ForecastService:
         self._cache = _TtlCache(CACHE_TTL_SECONDS)
 
     async def get(
-        self, route_id: str, from_segment_id: str, to_segment_id: str
+        self,
+        route_id: str,
+        from_segment_id: str,
+        to_segment_id: str,
+        departure: datetime,
     ) -> ForecastResponse | None:
         """None means unknown route or segment (the endpoint turns it into a 404)."""
         route = next((r for r in self._catalog.routes if r.id == route_id), None)
@@ -195,58 +264,61 @@ class ForecastService:
         if from_index > to_index:
             span = list(reversed(span))
 
+        # Inclusive hour stamps: WINDOW_HOURS hours starting at the departure
+        # hour (departure plus five more when WINDOW_HOURS is 6).
+        start_hour = _hour_stamp(departure)
+        end_hour = _hour_stamp(departure + timedelta(hours=WINDOW_HOURS - 1))
+
         return ForecastResponse(
             route_id=route.id,
             from_segment_id=from_segment_id,
             to_segment_id=to_segment_id,
+            departure_utc=departure.isoformat(),
             generated_at_utc=datetime.now(timezone.utc).isoformat(),
-            segments=[await self._forecast_for(segment) for segment in span],
+            segments=[
+                await self._forecast_for(segment, start_hour, end_hour) for segment in span
+            ],
         )
 
-    async def _forecast_for(self, segment: Segment) -> SegmentForecast:
-        key = f"{segment.lat:.4f}:{segment.lon:.4f}"
+    async def _forecast_for(
+        self, segment: Segment, start_hour: str, end_hour: str
+    ) -> SegmentForecast:
+        key = f"{segment.lat:.4f}:{segment.lon:.4f}:{start_hour}"
         samples = self._cache.get(key)
         if samples is None:
             try:
-                samples = await self._provider.get_hourly(segment.lat, segment.lon)
+                samples = await self._provider.get_hourly(
+                    segment.lat, segment.lon, start_hour, end_hour
+                )
                 self._cache.set(key, samples)  # failures are never cached
             except Exception as exc:  # noqa: BLE001 - degrade one town, not the journey
                 log.warning("open-meteo fetch failed for %s: %s", segment.id, exc)
                 samples = []
 
-        points = [
-            ForecastPoint(
-                valid_time_utc=sample.time_utc,
-                temperature_f=(
-                    round(sample.temperature_c * 9 / 5 + 32, 1)
-                    if sample.temperature_c is not None
-                    else None
-                ),
-                wind_gust_mph=_round2(sample.wind_gust_mph),
-                snowfall_rate_in_hr=_round2(sample.snowfall_rate_in_hr),
-                visibility_miles=_round2(sample.visibility_miles),
-                short_forecast=short_forecast(sample.weather_code),
-                # Air temperature stands in for road-surface temperature in a
-                # forecast (RWIS pavement sensors only exist for live readings).
-                regime=classify_conditions(
-                    snowfall_rate_in_hr=sample.snowfall_rate_in_hr,
-                    visibility_miles=sample.visibility_miles,
-                    wind_gust_mph=sample.wind_gust_mph,
-                    surface_temp_c=sample.temperature_c,
-                ),
-            )
-            for sample in samples
+        temps_f = [
+            None if s.temperature_c is None else s.temperature_c * 9 / 5 + 32 for s in samples
         ]
+        regimes = [_regime_for(s) for s in samples]
+        worst = worst_regime(regimes)
+        # Short text for the worst hour, so the card's words match its label.
+        worst_code = next(
+            (s.weather_code for s, r in zip(samples, regimes) if r == worst), None
+        )
 
         return SegmentForecast(
             segment=segment,
-            regime=worst_regime([p.regime for p in points]),
-            points=points,
+            regime=worst,
+            temperature_high_f=_round1(_max(temps_f)),
+            temperature_low_f=_round1(_min(temps_f)),
+            wind_gust_mph=_round2(_max([s.wind_gust_mph for s in samples])),
+            visibility_miles=_round2(_min([s.visibility_miles for s in samples])),
+            precip_probability_pct=(
+                None
+                if (p := _max([s.precip_probability_pct for s in samples])) is None
+                else round(p)
+            ),
+            short_forecast=short_forecast(worst_code),
         )
-
-
-def _round2(value: float | None) -> float | None:
-    return None if value is None else round(value, 2)
 
 
 def get_forecast_service(request: Request) -> ForecastService:

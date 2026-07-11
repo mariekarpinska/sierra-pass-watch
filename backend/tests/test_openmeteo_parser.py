@@ -1,9 +1,11 @@
-"""parse_hourly: payload to samples in pipeline units, no network involved."""
+"""parse_hourly and parse_departure: pure helpers, no network involved."""
 from __future__ import annotations
+
+from datetime import timezone
 
 import pytest
 
-from api.weather import parse_hourly, short_forecast
+from api.weather import parse_departure, parse_hourly, short_forecast
 
 
 def _payload(**hourly_overrides) -> dict:
@@ -14,6 +16,7 @@ def _payload(**hourly_overrides) -> dict:
         "wind_gusts_10m": [40.0, 20.0],
         "visibility": [800.0, 16000.0],
         "weather_code": [73, 1],
+        "precipitation_probability": [80, 10],
     }
     hourly.update(hourly_overrides)
     return {"hourly": hourly}
@@ -25,6 +28,7 @@ def test_converts_units_at_the_edge() -> None:
     assert first.snowfall_rate_in_hr == pytest.approx(1.5 * 0.393701)  # cm/h to in/h
     assert first.wind_gust_mph == pytest.approx(40.0 * 0.621371)  # km/h to mph
     assert first.visibility_miles == pytest.approx(800.0 * 0.000621371)  # m to miles
+    assert first.precip_probability_pct == 80  # a percentage, no conversion
     assert first.weather_code == 73
     assert second.temperature_c == -2.5
 
@@ -48,3 +52,16 @@ def test_wmo_codes_map_to_descriptive_text_only() -> None:
     assert short_forecast(95) == "Thunderstorm"
     assert short_forecast(42) == "Mixed Conditions"  # unmapped code
     assert short_forecast(None) is None
+
+
+def test_parse_departure_normalizes_to_utc() -> None:
+    # A trailing Z, an explicit offset, and a bare stamp all land on UTC.
+    assert parse_departure("2026-01-12T15:00:00Z").tzinfo == timezone.utc
+    assert parse_departure("2026-01-12T07:00:00-08:00").hour == 15  # PST to UTC
+    naive = parse_departure("2026-01-12T15:00")
+    assert naive.hour == 15 and naive.tzinfo == timezone.utc
+
+
+def test_parse_departure_rejects_garbage() -> None:
+    with pytest.raises(ValueError):
+        parse_departure("next tuesday")

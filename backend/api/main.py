@@ -27,7 +27,12 @@ from api.db import create_pool
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
 from api.schemas import ForecastResponse, Health, Route, Segment
 from api.segments import SegmentRepository, get_segment_repository
-from api.weather import ForecastService, OpenMeteoForecastProvider, get_forecast_service
+from api.weather import (
+    ForecastService,
+    OpenMeteoForecastProvider,
+    get_forecast_service,
+    parse_departure,
+)
 
 log = logging.getLogger(__name__)
 
@@ -115,21 +120,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await repository.get(route)
 
     # Live forecast along a journey span: Open-Meteo sampled at each town from
-    # `from` to `to` (either direction), every hour labelled by the shared
-    # regime classifier. Missing params are the client's error (400); unknown
-    # ids are a 404.
+    # `from` to `to` (either direction) over a fixed window starting at
+    # `departure` (an ISO time), each town's hours reduced to one card summary.
+    # Missing/invalid params are the client's error (400); unknown ids are a 404.
     @app.get("/api/forecast", response_model=ForecastResponse)
     async def forecast(
         route: str | None = None,
         from_: str | None = Query(default=None, alias="from"),
         to: str | None = None,
+        departure: str | None = None,
         service: ForecastService = Depends(get_forecast_service),
     ):
-        if not route or not from_ or not to:
+        if not route or not from_ or not to or not departure:
             return JSONResponse(
-                status_code=400, content={"error": "route, from and to are required"}
+                status_code=400,
+                content={"error": "route, from, to and departure are required"},
             )
-        response = await service.get(route, from_, to)
+        try:
+            departure_at = parse_departure(departure)
+        except ValueError:
+            return JSONResponse(
+                status_code=400, content={"error": "departure must be an ISO 8601 time"}
+            )
+        response = await service.get(route, from_, to, departure_at)
         if response is None:
             return JSONResponse(
                 status_code=404, content={"error": "unknown route or segment"}
