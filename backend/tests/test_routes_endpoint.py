@@ -19,10 +19,11 @@ def test_routes_returns_the_full_sierra_catalogue(client) -> None:
     assert all(route["towns"] for route in routes)
 
 
-def test_routes_serve_every_route_and_town_in_catalogue_order(client) -> None:
-    """The endpoint serves the catalogue faithfully: every route in order, and
-    every route's towns in travel order. test_route_catalogue.py checks that file
-    against pipeline/routes.py, so together they cover code -> file -> API."""
+def test_endpoint_serves_the_catalogue_faithfully(client) -> None:
+    """Returns every route and town in the catalogue's order, unchanged. This
+    only checks the endpoint does not reorder or drop anything; that the file
+    itself matches pipeline/routes.py is a separate check in the pipeline job
+    (pipeline/tests/test_route_catalogue.py)."""
     served = client.get("/api/routes").json()
     catalogue = json.loads(_CATALOGUE.read_text(encoding="utf-8"))["routes"]
 
@@ -33,9 +34,27 @@ def test_routes_serve_every_route_and_town_in_catalogue_order(client) -> None:
     for served_route, source in zip(served, catalogue, strict=True):
         assert [t["name"] for t in served_route["towns"]] == [t["name"] for t in source["towns"]]
 
-    # A concrete anchor so the expectation is readable at a glance.
-    (i80,) = [r for r in served if r["id"] == "I-80"]
-    assert [t["name"] for t in i80["towns"]] == ["Colfax", "Donner Summit", "Truckee"]
+
+def test_known_route_facts_are_served(client) -> None:
+    """A few facts pinned here directly, not read from the catalogue file, so a
+    hand-edited or corrupted file is caught by this test too, not only by the
+    pipeline drift test."""
+    routes = {r["id"]: r for r in client.get("/api/routes").json()}
+
+    # I-80 runs Colfax -> Donner Summit -> Truckee, and is year-round.
+    assert [t["name"] for t in routes["I-80"]["towns"]] == ["Colfax", "Donner Summit", "Truckee"]
+    assert routes["I-80"]["seasonal"] is False
+
+    # US-395 has its four eastern-Sierra towns in order.
+    assert [t["name"] for t in routes["US-395"]["towns"]] == [
+        "Bridgeport", "Lee Vining", "Bishop", "Lone Pine",
+    ]
+
+    # SR-168 is split into disconnected west and east halves.
+    assert "SR-168W" in routes and "SR-168E" in routes
+
+    # A seasonal pass is flagged as such.
+    assert routes["SR-120"]["seasonal"] is True
 
 
 def test_routes_serialize_camel_case_for_the_frontend(client) -> None:
