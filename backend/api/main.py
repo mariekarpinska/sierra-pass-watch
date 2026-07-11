@@ -58,13 +58,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
 
     # Only add CORS if origins are configured; the default same-origin setup
-    # needs none (see config.py).
+    # needs none (see config.py). Even when enabled: an explicit origin
+    # allowlist, GET only, and only the one header the client sends. No
+    # credentials.
     if settings.cors_allowed_origins:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_allowed_origins,
             allow_methods=["GET"],
-            allow_headers=["*"],
+            allow_headers=["X-Correlation-Id"],
         )
 
     # Any unhandled error becomes a generic JSON 500. The traceback goes to the
