@@ -29,14 +29,17 @@ from api.segments import SegmentRepository, get_segment_repository
 
 log = logging.getLogger(__name__)
 
+# Add the correlation-id filter to the root logger once, at import, so every log
+# record carries the request's id (middleware.py). Done here, not inside
+# create_app, so building several apps (as the tests do) does not stack a new
+# filter each time.
+logging.getLogger().addFilter(CorrelationIdFilter())
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. Using a factory (not a module-level app) lets each test
     build its own isolated instance and pass its own Settings."""
     settings = settings or Settings()
-
-    # Every log record carries the request's correlation id (middleware.py).
-    logging.getLogger().addFilter(CorrelationIdFilter())
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
