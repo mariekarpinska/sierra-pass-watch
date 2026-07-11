@@ -8,6 +8,7 @@ to every log line written while handling the request.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from contextvars import ContextVar
 
@@ -18,6 +19,15 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 correlation_id: ContextVar[str] = ContextVar("correlation_id", default="-")
 
 HEADER = "X-Correlation-Id"
+
+# Accept only a canonical UUID, the exact shape the frontend sends via
+# crypto.randomUUID (frontend/src/api/client.ts). Anything else (junk, raw bytes
+# decoded to text, wrong length) is ignored and we mint our own, so the id we log
+# and reflect is always a clean UUID and a malformed header cannot crash the
+# request or inject into the response.
+_UUID = re.compile(
+    r"\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
+)
 
 
 class CorrelationIdFilter(logging.Filter):
@@ -41,7 +51,10 @@ class CorrelationIdMiddleware:
             return
 
         headers = dict(scope["headers"])
-        incoming = headers.get(HEADER.lower().encode(), b"").decode() or str(uuid.uuid4())
+        # Header bytes are latin-1 by spec, so this decode never raises. Keep the
+        # value only if it is a canonical UUID; otherwise mint a fresh one.
+        raw = headers.get(HEADER.lower().encode(), b"").decode("latin-1")
+        incoming = raw if _UUID.match(raw) else str(uuid.uuid4())
         correlation_id.set(incoming)
 
         async def send_with_header(message) -> None:
