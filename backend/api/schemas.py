@@ -59,3 +59,33 @@ class Segment(CamelModel):
     name: str
     lat: float
     lon: float
+
+
+class ForecastPoint(CamelModel):
+    """One forecast sample for a segment at a point in time."""
+
+    valid_time_utc: str
+    temperature_f: float | None
+    wind_gust_mph: float | None
+    snowfall_rate_in_hr: float | None
+    visibility_miles: float | None
+    short_forecast: str | None
+    regime: str
+
+
+class SegmentForecast(CamelModel):
+    """Forecast for one segment over the window; regime is the worst across points."""
+
+    segment: Segment
+    regime: str
+    points: list[ForecastPoint]
+
+
+class ForecastResponse(CamelModel):
+    """GET /api/forecast?route=&from=&to="""
+
+    route_id: str
+    from_segment_id: str
+    to_segment_id: str
+    generated_at_utc: str
+    segments: list[SegmentForecast]

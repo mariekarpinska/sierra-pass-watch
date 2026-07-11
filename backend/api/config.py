@@ -33,3 +33,7 @@ class Settings(BaseSettings):
 
     # Folder the route catalogue file is read from.
     shared_dir: Path = _DEFAULT_SHARED_DIR
+
+    # Fixed upstream for the forecast slice (SECURITY.md: the only host the API
+    # calls out to; never derived from request input).
+    open_meteo_base_url: str = "https://api.open-meteo.com"

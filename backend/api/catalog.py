@@ -8,12 +8,13 @@ dependency below so tests can swap it.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi import Request
 from pydantic import BaseModel
 
-from api.schemas import Route
+from api.schemas import Route, Segment, Town
 
 
 class RouteCatalog(BaseModel):
@@ -32,3 +33,24 @@ class RouteCatalog(BaseModel):
 def get_catalog(request: Request) -> RouteCatalog:
     """Dependency: the catalogue loaded at startup (see main.create_app)."""
     return request.app.state.catalog
+
+
+def town_slug(name: str) -> str:
+    """"Donner Summit" becomes "donner-summit", the same convention as
+    pipeline/routes.py and the frontend (segment ids must agree everywhere)."""
+    return re.sub(r"^-|-$", "", re.sub(r"[^a-z0-9]+", "-", name.lower()))
+
+
+def segment_for_town(route: Route, town: Town) -> Segment:
+    return Segment(
+        id=f"{route.id}:{town_slug(town.name)}",
+        route_id=route.id,
+        name=town.name,
+        lat=town.lat,
+        lon=town.lon,
+    )
+
+
+def segments_for_route(route: Route) -> list[Segment]:
+    """The route's waypoints as contract segments, in travel order."""
+    return [segment_for_town(route, town) for town in route.towns]
