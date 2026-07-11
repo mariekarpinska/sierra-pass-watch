@@ -32,24 +32,20 @@ const SEGMENTS: Segment[] = [
 ];
 const FORECAST: ForecastResponse = {
   routeId: "I-80",
-  fromSegmentId: "I-80:colfax",
+  fromSegmentId: "I-80:truckee",
   toSegmentId: "I-80:truckee",
-  generatedAtUtc: "2026-01-12T15:00:00+00:00",
+  departureUtc: "2026-01-12T15:00:00+00:00",
+  generatedAtUtc: "2026-01-12T15:02:00+00:00",
   segments: [
     {
       segment: SEGMENTS[0],
       regime: "SNOW",
-      points: [
-        {
-          validTimeUtc: "2026-01-12T15:00",
-          temperatureF: 28.4,
-          windGustMph: 12,
-          snowfallRateInHr: 0.7,
-          visibilityMiles: 2,
-          shortForecast: "Snow",
-          regime: "SNOW",
-        },
-      ],
+      temperatureHighF: 28.4,
+      temperatureLowF: 27.5,
+      windGustMph: 12,
+      visibilityMiles: 2,
+      precipProbabilityPct: 80,
+      shortForecast: "Snow",
     },
   ],
 };
@@ -96,17 +92,18 @@ describe("getSegments", () => {
 });
 
 describe("getForecast", () => {
-  it("sends route, from and to as query params and returns the forecast", async () => {
+  it("sends route, from, to and departure as query params and returns the forecast", async () => {
     mockGet.mockResolvedValue({ data: FORECAST });
 
-    const forecast = await getForecast("I-80", "I-80:colfax", "I-80:truckee");
+    const departure = "2026-01-12T15:00:00.000Z";
+    const forecast = await getForecast("I-80", "I-80:colfax", "I-80:truckee", departure);
 
-    // The segment ids map to the endpoint's `from`/`to` params.
+    // The segment ids and departure map to the endpoint's query params.
     expect(mockGet).toHaveBeenCalledWith("/api/forecast", {
-      params: { route: "I-80", from: "I-80:colfax", to: "I-80:truckee" },
+      params: { route: "I-80", from: "I-80:colfax", to: "I-80:truckee", departure },
     });
     expect(forecast.segments[0].regime).toBe("SNOW");
-    expect(forecast.segments[0].points[0].shortForecast).toBe("Snow");
+    expect(forecast.segments[0].shortForecast).toBe("Snow");
   });
 });
 

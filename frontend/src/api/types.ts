@@ -65,31 +65,33 @@ export interface Segment {
   lon: number;
 }
 
-/** One forecast sample for a segment at a point in time. */
-export interface ForecastPoint {
-  validTimeUtc: string;
-  temperatureF: number | null;
-  windGustMph: number | null;
-  snowfallRateInHr: number | null;
-  visibilityMiles: number | null;
-  /** Descriptive short text, e.g. "Snow". Never a judgement. */
-  shortForecast: string | null;
-  regime: RegimeCode;
-}
-
-/** Forecast for one segment over the requested window. */
+/**
+ * Forecast for one town over the departure window (a fixed number of hours from
+ * the driver's start time). The values summarize that window so the card can
+ * show conditions for the drive, not one instant: the worst regime, the
+ * temperature range, and the roughest wind/visibility/precip any hour reaches.
+ * Any field is null when no hour supplied it (e.g. the upstream was down).
+ */
 export interface SegmentForecast {
   segment: Segment;
-  /** Worst regime across `points`: what the journey view keys on. */
+  /** Worst regime across the window: what the card keys its condition on. */
   regime: RegimeCode;
-  points: ForecastPoint[];
+  temperatureHighF: number | null;
+  temperatureLowF: number | null;
+  windGustMph: number | null;
+  visibilityMiles: number | null;
+  precipProbabilityPct: number | null;
+  /** Descriptive short text for the worst hour, e.g. "Snow". Never a judgement. */
+  shortForecast: string | null;
 }
 
-/** GET /api/forecast?route=&from=&to= */
+/** GET /api/forecast?route=&from=&to=&departure= */
 export interface ForecastResponse {
   routeId: string;
   fromSegmentId: string;
   toSegmentId: string;
+  /** The departure time the window started at, normalized to UTC. */
+  departureUtc: string;
   generatedAtUtc: string;
   segments: SegmentForecast[];
 }
