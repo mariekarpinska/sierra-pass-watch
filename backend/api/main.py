@@ -12,7 +12,9 @@ Run locally (the Vite dev server proxies /api here):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -20,6 +22,13 @@ import httpx
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+# On Windows, psycopg's async pool cannot run on the default ProactorEventLoop;
+# it needs a SelectorEventLoop. uvicorn builds its loop from the asyncio policy,
+# so set the selector policy here at import, before that loop is created. This
+# is a no-op on Linux and macOS, so the Linux deployment is unaffected.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
