@@ -3,6 +3,15 @@
 A running record of how security was considered as this repository evolved.
 Each change that touches the security posture appends a dated section.
 
+## 2026-07-11 - feat/journey-routing (routing stays off the request path)
+
+- **No new runtime outbound call.** Multi-highway routing uses OSRM, but only at
+  build time (`pipeline/build_journeys.py`), exactly like the route polylines.
+  The request path reads a committed JSON file, so the API's only runtime
+  outbound call is still Open-Meteo.
+- **Inputs stay bounded.** `from`/`to` are catalogue town ids looked up in a
+  fixed in-memory table.
+
 ## 2026-07-10 - feat/forecast-live (outbound-call posture)
 
 - **First outbound call from the API** (Open-Meteo). No SSRF surface: the base
