@@ -32,7 +32,7 @@ docker compose up -d
 python -m venv .venv && source .venv/bin/activate    # .venv\Scripts\Activate.ps1 on Windows
 pip install -e .                                      # the pipeline package: the API imports pipeline.regime
 cd backend && pip install -e ".[dev]"                 # then the API itself
-uvicorn api.main:app --port 5080 --no-server-header
+python -m api                                          # serves :5080 (sets the selector loop Windows+psycopg needs)
 
 # 3. Frontend → http://localhost:5173 (proxies /api to the backend)
 cd frontend && npm install && npm run dev
