@@ -151,12 +151,16 @@ class _TtlCache:
         self._entries: dict[str, tuple[float, list[HourlySample]]] = {}
 
     def get(self, key: str) -> list[HourlySample] | None:
+        # Look up the key, and return its samples only if the entry exists and
+        # has not expired (now is still before the stored expiry time, entry[0]).
         entry = self._entries.get(key)
         if entry and time.monotonic() < entry[0]:
             return entry[1]
         return None
 
     def set(self, key: str, value: list[HourlySample]) -> None:
+        # Store (or replace) the samples under the key, paired with the time
+        # they expire: now plus the cache's ttl.
         self._entries[key] = (time.monotonic() + self._ttl, value)
 
 
