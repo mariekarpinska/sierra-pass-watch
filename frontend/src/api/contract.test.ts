@@ -3,6 +3,8 @@
 // hands back the data. There is no real backend here: we replace the axios
 // client with a fake, so nothing leaves the test process.
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import golden from "../../../shared/weather-regime-cases.json";
+import { REGIME_CODES } from "./types";
 import type { ForecastResponse, Route, Segment } from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
@@ -104,6 +106,17 @@ describe("getForecast", () => {
     });
     expect(forecast.segments[0].regime).toBe("SNOW");
     expect(forecast.segments[0].shortForecast).toBe("Snow");
+  });
+});
+
+// REGIME_CODES is a hand-written mirror of pipeline/regime.py's REGIMES. The
+// shared golden file exercises every regime, so set-equality against its
+// expected labels catches a vocabulary change (a regime added, renamed or
+// removed) that skipped this copy. Ordering is asserted on the backend side
+// (test_regime_contract.py pins worst-first ends of REGIMES).
+describe("regime vocabulary stays in sync with the shared contract", () => {
+  it("REGIME_CODES matches the golden cases' expected labels", () => {
+    expect(new Set(REGIME_CODES)).toEqual(new Set(golden.cases.map((c) => c.expected)));
   });
 });
 
