@@ -21,6 +21,7 @@ to UNKNOWN rather than failing the journey.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -288,15 +289,22 @@ class ForecastService:
         start_hour = _hour_stamp(departure)
         end_hour = _hour_stamp(departure + timedelta(hours=WINDOW_HOURS - 1))
 
+        # The per-town fetches are independent, so run them concurrently:
+        # serializing them stacks upstream latency per town — and when
+        # Open-Meteo hangs, stacks its 10 s timeouts past the frontend's own
+        # request timeout. _forecast_for never raises (a failed town degrades
+        # to UNKNOWN), so gather cannot blow up the response.
+        town_forecasts = await asyncio.gather(
+            *(self._forecast_for(segment, start_hour, end_hour) for segment in span)
+        )
+
         return ForecastResponse(
             route_id=route.id,
             from_segment_id=from_segment_id,
             to_segment_id=to_segment_id,
             departure_utc=departure.isoformat(),
             generated_at_utc=datetime.now(timezone.utc).isoformat(),
-            segments=[
-                await self._forecast_for(segment, start_hour, end_hour) for segment in span
-            ],
+            segments=list(town_forecasts),
         )
 
     async def _forecast_for(
