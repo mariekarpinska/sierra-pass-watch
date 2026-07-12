@@ -38,3 +38,10 @@ def test_worst_regime_follows_the_worst_first_ordering() -> None:
     assert worst_regime([]) == "UNKNOWN"
     # The ordering itself is part of the contract (frontend REGIME_CODES).
     assert REGIMES[0] == "HEAVY_SNOW_LOW_VIS" and REGIMES[-1] == "UNKNOWN"
+
+
+def test_worst_regime_reports_unknown_when_it_dominates_the_window() -> None:
+    # One readable hour must not badge a mostly-unreadable window as clear...
+    assert worst_regime(["UNKNOWN"] * 4 + ["CLEAR_DRY"]) == "UNKNOWN"
+    # ...but a minority of unreadable hours defers to the known weather.
+    assert worst_regime(["UNKNOWN", "CLEAR_DRY", "SNOW"]) == "SNOW"

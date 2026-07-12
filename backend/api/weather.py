@@ -133,8 +133,14 @@ def short_forecast(weather_code: int | None) -> str | None:
 
 
 def worst_regime(regimes: list[str]) -> str:
-    """REGIMES is ordered worst-first, so "worst" is the minimum index."""
+    """REGIMES is ordered worst-first, so "worst" is the minimum index — with
+    one exception. UNKNOWN sits last in the ordering because it is not a
+    weather severity, and ranking it least severe would let a single readable
+    hour badge a mostly data-void window as affirmatively clear. So when
+    UNKNOWN holds the majority of the window, the summary says UNKNOWN."""
     if not regimes:
+        return "UNKNOWN"
+    if regimes.count("UNKNOWN") * 2 > len(regimes):
         return "UNKNOWN"
     return min(regimes, key=REGIMES.index)
 
