@@ -43,8 +43,10 @@ from api.schemas import ForecastResponse, Segment, SegmentForecast
 
 log = logging.getLogger(__name__)
 
-#: Hours of forecast to summarize, counting from the departure hour. Six hours
-#: covers a Sierra corridor drive with room to spare.
+#: Hours of forecast to summarize, counting from the departure's hour block —
+#: a 15:59 departure includes the 15:00 hour on purpose, since the driver is on
+#: the road during it. Six hours covers a Sierra corridor drive with room to
+#: spare.
 WINDOW_HOURS = 6
 
 #: A forecast ages; five minutes matches the frontend's staleTime and keeps
