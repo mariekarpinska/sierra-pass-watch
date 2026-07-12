@@ -56,6 +56,7 @@ class HourlySample(BaseModel):
 
     time_utc: str
     temperature_c: float | None
+    surface_temp_c: float | None
     snowfall_rate_in_hr: float | None
     wind_gust_mph: float | None
     visibility_miles: float | None
@@ -98,6 +99,7 @@ def parse_hourly(payload: dict) -> list[HourlySample]:
         HourlySample(
             time_utc=_utc_stamp(time_value),
             temperature_c=number("temperature_2m", i),
+            surface_temp_c=number("surface_temperature", i),
             snowfall_rate_in_hr=scaled("snowfall", i, CM_TO_IN),
             wind_gust_mph=scaled("wind_gusts_10m", i, KMH_TO_MPH),
             visibility_miles=scaled("visibility", i, M_TO_MILES),
@@ -172,8 +174,8 @@ class OpenMeteoForecastProvider:
                 "latitude": round(lat, 4),
                 "longitude": round(lon, 4),
                 "hourly": (
-                    "temperature_2m,snowfall,wind_gusts_10m,visibility,"
-                    "weather_code,precipitation_probability"
+                    "temperature_2m,surface_temperature,snowfall,wind_gusts_10m,"
+                    "visibility,weather_code,precipitation_probability"
                 ),
                 "start_hour": start_hour,
                 "end_hour": end_hour,
@@ -209,13 +211,16 @@ class _TtlCache:
 
 
 def _regime_for(sample: HourlySample) -> str:
-    # Air temperature stands in for road-surface temperature in a forecast (RWIS
-    # pavement sensors only exist for live readings).
+    # Surface (pavement) temperature, the same signal the live RWIS readings and
+    # the archive backfill feed the classifier: its -4 °C black-ice threshold is
+    # pavement-calibrated, and air temperature can sit degrees away (a sunny
+    # subfreezing morning would otherwise read ICE_FREEZING here and CLEAR_DRY
+    # on the live path). Air temperature stays on the sample for display.
     return classify_conditions(
         snowfall_rate_in_hr=sample.snowfall_rate_in_hr,
         visibility_miles=sample.visibility_miles,
         wind_gust_mph=sample.wind_gust_mph,
-        surface_temp_c=sample.temperature_c,
+        surface_temp_c=sample.surface_temp_c,
     )
 
 

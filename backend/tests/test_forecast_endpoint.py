@@ -35,6 +35,7 @@ class FakeForecastProvider:
             HourlySample(
                 time_utc="2026-01-12T15:00",
                 temperature_c=-2.0,
+                surface_temp_c=-2.0,
                 snowfall_rate_in_hr=0.7 if snowy else 0.0,
                 wind_gust_mph=12.0,
                 visibility_miles=2.0 if snowy else 9.0,
@@ -44,6 +45,7 @@ class FakeForecastProvider:
             HourlySample(
                 time_utc="2026-01-12T16:00",
                 temperature_c=-2.5,
+                surface_temp_c=-2.5,
                 snowfall_rate_in_hr=0.0,
                 wind_gust_mph=10.0,
                 visibility_miles=9.0,

@@ -12,6 +12,7 @@ def _payload(**hourly_overrides) -> dict:
     hourly = {
         "time": ["2026-01-12T15:00", "2026-01-12T16:00"],
         "temperature_2m": [-2.0, -2.5],
+        "surface_temperature": [1.0, 0.5],
         "snowfall": [1.5, 0.0],
         "wind_gusts_10m": [40.0, 20.0],
         "visibility": [800.0, 16000.0],
@@ -31,6 +32,9 @@ def test_converts_units_at_the_edge() -> None:
     assert first.precip_probability_pct == 80  # a percentage, no conversion
     assert first.weather_code == 73
     assert second.temperature_c == -2.5
+    # Air and pavement are separate fields: air drives the card's temperature
+    # range, surface drives the classifier's black-ice rule.
+    assert first.surface_temp_c == 1.0
 
 
 def test_hour_stamps_carry_an_explicit_utc_offset() -> None:
