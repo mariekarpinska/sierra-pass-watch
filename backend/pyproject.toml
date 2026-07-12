@@ -1,7 +1,12 @@
 # Sierra Safe API - FastAPI service. Package config and dependencies.
+#
+# The API depends on sierra-corridor-pipeline, which is monorepo-local (NOT on
+# PyPI) - install the repo root first, or pip will try to resolve that name
+# against the public index and fail:
+#   pip install -e .          # from the repo root: the pipeline package
 #   cd backend
 #   pip install -e ".[dev]"
-#   uvicorn api.main:app --port 5080 --no-server-header
+#   python -m api              # serves :5080 (see README)
 
 [build-system]
 requires = ["setuptools>=75"]
