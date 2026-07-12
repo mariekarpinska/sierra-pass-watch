@@ -21,12 +21,15 @@ class FakeForecastProvider:
 
     def __init__(self) -> None:
         self.throw = False
+        self.empty = False
 
     async def get_hourly(
         self, lat: float, lon: float, start_hour: str, end_hour: str
     ) -> list[HourlySample]:
         if self.throw:
             raise RuntimeError("upstream down")
+        if self.empty:
+            return []
         snowy = abs(lat - 38.8124) < 0.001
         return [
             HourlySample(
@@ -158,6 +161,24 @@ def test_reversed_journeys_come_back_in_reversed_travel_order(client) -> None:
         "US-50:echo-summit",
         "US-50:placerville",
     ]
+
+
+def test_an_empty_upstream_payload_is_not_cached(client, provider) -> None:
+    """A 200 with no usable hours degrades that request to UNKNOWN, but must
+    not be cached: the next request should hit upstream again and recover."""
+    params = dict(
+        route="US-50",
+        departure=DEPARTURE,
+        **{"from": "US-50:echo-summit", "to": "US-50:echo-summit"},
+    )
+
+    provider.empty = True
+    degraded = _forecast(client, **params).json()
+    assert degraded["segments"][0]["regime"] == "UNKNOWN"
+
+    provider.empty = False
+    recovered = _forecast(client, **params).json()
+    assert recovered["segments"][0]["regime"] == "SNOW"
 
 
 def test_upstream_failure_degrades_to_unknown_not_a_500(client, provider) -> None:

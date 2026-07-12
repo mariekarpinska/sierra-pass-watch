@@ -298,7 +298,11 @@ class ForecastService:
                 samples = await self._provider.get_hourly(
                     segment.lat, segment.lon, start_hour, end_hour
                 )
-                self._cache.set(key, samples)  # failures are never cached
+                # Neither failures nor empty payloads are cached: a transient
+                # 200 with no usable hours must not pin the town to UNKNOWN
+                # for the whole TTL — the next request should retry upstream.
+                if samples:
+                    self._cache.set(key, samples)
             except Exception as exc:  # noqa: BLE001 - degrade one town, not the journey
                 log.warning("open-meteo fetch failed for %s: %s", segment.id, exc)
                 samples = []
