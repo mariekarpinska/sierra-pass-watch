@@ -8,11 +8,14 @@ dependency below so tests can swap it.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from fastapi import Request
 from pydantic import BaseModel
+
+# The slug is the join key between pipeline-written rows and API segment ids
+# ("{routeId}:{town-slug}"), so there must be exactly one implementation.
+from pipeline.routes import town_slug
 
 from api.schemas import Route, Segment, Town
 
@@ -33,12 +36,6 @@ class RouteCatalog(BaseModel):
 def get_catalog(request: Request) -> RouteCatalog:
     """Dependency: the catalogue loaded at startup (see main.create_app)."""
     return request.app.state.catalog
-
-
-def town_slug(name: str) -> str:
-    """"Donner Summit" becomes "donner-summit", the same convention as
-    pipeline/routes.py and the frontend (segment ids must agree everywhere)."""
-    return re.sub(r"^-|-$", "", re.sub(r"[^a-z0-9]+", "-", name.lower()))
 
 
 def segment_for_town(route: Route, town: Town) -> Segment:
