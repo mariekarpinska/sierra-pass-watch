@@ -73,6 +73,13 @@ class ForecastProvider(Protocol):
     ) -> list[HourlySample]: ...
 
 
+def _utc_stamp(value: object) -> str:
+    """Open-Meteo returns naive hour stamps (we request timezone=UTC); make the
+    zone explicit so the string can never be misread as local time — JavaScript,
+    for one, parses an offset-less ISO string as local."""
+    return datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).isoformat()
+
+
 def parse_hourly(payload: dict) -> list[HourlySample]:
     """Pure payload to samples parsing, unit-tested without a network."""
     hourly = payload.get("hourly", {})
@@ -89,7 +96,7 @@ def parse_hourly(payload: dict) -> list[HourlySample]:
 
     return [
         HourlySample(
-            time_utc=str(time_value),
+            time_utc=_utc_stamp(time_value),
             temperature_c=number("temperature_2m", i),
             snowfall_rate_in_hr=scaled("snowfall", i, CM_TO_IN),
             wind_gust_mph=scaled("wind_gusts_10m", i, KMH_TO_MPH),

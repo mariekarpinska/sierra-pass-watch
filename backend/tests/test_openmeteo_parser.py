@@ -33,6 +33,14 @@ def test_converts_units_at_the_edge() -> None:
     assert second.temperature_c == -2.5
 
 
+def test_hour_stamps_carry_an_explicit_utc_offset() -> None:
+    # Open-Meteo sends "2026-01-12T15:00" (no zone); an offset-less stamp reads
+    # as local time in JavaScript, so the parser must pin it to UTC.
+    first, _ = parse_hourly(_payload())
+
+    assert first.time_utc == "2026-01-12T15:00:00+00:00"
+
+
 def test_missing_fields_become_none_not_zero() -> None:
     samples = parse_hourly(_payload(snowfall=None, visibility=[None, None]))
 
