@@ -32,14 +32,15 @@ from pydantic import BaseModel
 
 from pipeline.regime import REGIMES, classify_conditions
 
+# One set of conversion factors for both paths: the classifier's thresholds
+# (in/hr, mph, mi) must be fed identically-scaled numbers by the forecast and
+# by the pipeline's readings, or the same weather gets two different labels.
+from pipeline.sources.openmeteo import CM_TO_IN, KMH_TO_MPH, M_TO_MILES
+
 from api.catalog import RouteCatalog, segments_for_route
 from api.schemas import ForecastResponse, Segment, SegmentForecast
 
 log = logging.getLogger(__name__)
-
-_CM_TO_IN = 0.393701
-_KMH_TO_MPH = 0.621371
-_M_TO_MILES = 0.000621371
 
 #: Hours of forecast to summarize, counting from the departure hour. Six hours
 #: covers a Sierra corridor drive with room to spare.
@@ -90,9 +91,9 @@ def parse_hourly(payload: dict) -> list[HourlySample]:
         HourlySample(
             time_utc=str(time_value),
             temperature_c=number("temperature_2m", i),
-            snowfall_rate_in_hr=scaled("snowfall", i, _CM_TO_IN),
-            wind_gust_mph=scaled("wind_gusts_10m", i, _KMH_TO_MPH),
-            visibility_miles=scaled("visibility", i, _M_TO_MILES),
+            snowfall_rate_in_hr=scaled("snowfall", i, CM_TO_IN),
+            wind_gust_mph=scaled("wind_gusts_10m", i, KMH_TO_MPH),
+            visibility_miles=scaled("visibility", i, M_TO_MILES),
             precip_probability_pct=number("precipitation_probability", i),
             weather_code=(int(code) if (code := number("weather_code", i)) is not None else None),
         )

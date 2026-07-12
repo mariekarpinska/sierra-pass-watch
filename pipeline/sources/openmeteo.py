@@ -18,9 +18,11 @@ log = logging.getLogger(__name__)
 CURRENT_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-_CM_TO_IN = 0.393701
-_KMH_TO_MPH = 0.621371
-_M_TO_MILES = 0.000621371
+# Public on purpose: the API's forecast parser (backend/api/weather.py) imports
+# these, so both paths feed the shared classifier identically-scaled numbers.
+CM_TO_IN = 0.393701
+KMH_TO_MPH = 0.621371
+M_TO_MILES = 0.000621371
 
 
 @dataclass
@@ -37,9 +39,9 @@ class WeatherReading:
 def _reading(time: str, snowfall_cm, visibility_m, gust_kmh, temp_c) -> WeatherReading:
     return WeatherReading(
         timestamp=time,
-        snowfall_rate_in_hr=None if snowfall_cm is None else snowfall_cm * _CM_TO_IN,
-        visibility_miles=None if visibility_m is None else visibility_m * _M_TO_MILES,
-        wind_gust_mph=None if gust_kmh is None else gust_kmh * _KMH_TO_MPH,
+        snowfall_rate_in_hr=None if snowfall_cm is None else snowfall_cm * CM_TO_IN,
+        visibility_miles=None if visibility_m is None else visibility_m * M_TO_MILES,
+        wind_gust_mph=None if gust_kmh is None else gust_kmh * KMH_TO_MPH,
         temperature_c=temp_c,
     )
 
