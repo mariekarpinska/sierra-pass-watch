@@ -1,7 +1,12 @@
 # Sierra Safe API - FastAPI service. Package config and dependencies.
+#
+# The API depends on sierra-corridor-pipeline, which is monorepo-local (NOT on
+# PyPI) - install the repo root first, or pip will try to resolve that name
+# against the public index and fail:
+#   pip install -e .          # from the repo root: the pipeline package
 #   cd backend
 #   pip install -e ".[dev]"
-#   uvicorn api.main:app --port 5080 --no-server-header
+#   python -m api              # serves :5080 (see README)
 
 [build-system]
 requires = ["setuptools>=75"]
@@ -19,14 +24,19 @@ dependencies = [
     "pydantic-settings>=2.5",
     # Async Postgres access + a connection pool (db.py, segments.py).
     "psycopg[binary,pool]>=3.2",
+    # Outbound HTTP to Open-Meteo (weather.py) and, via TestClient, the test
+    # transport.
+    "httpx>=0.28",
+    # The regime classifier lives in the pipeline package, so ONE
+    # implementation labels forecasts, live readings and crash history.
+    # Monorepo-local: install the repo root first (`pip install -e ..`).
+    "sierra-corridor-pipeline",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
-    # TestClient drives the app in-process over httpx - no socket, no server.
-    "httpx>=0.28",
     # anyio backend for the async repository test.
     "pytest-asyncio>=0.24",
     # A real Postgres for the repository integration test.

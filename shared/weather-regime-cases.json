@@ -4,7 +4,7 @@
     "snowfallRateInHr": "inches per hour, from Open-Meteo",
     "visibilityMiles": "miles, from RWIS or Open-Meteo",
     "windGustMph": "mph, from RWIS, NWS or Open-Meteo",
-    "surfaceTempC": "road surface °C, from RWIS (air temp proxy in forecasts)",
+    "surfaceTempC": "road surface °C, from RWIS or Open-Meteo surface_temperature",
     "chainControl": "Caltrans chain control status: null, R1, R2 or R3"
   },
   "cases": [

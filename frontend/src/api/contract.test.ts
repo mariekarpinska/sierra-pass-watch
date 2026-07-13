@@ -1,19 +1,22 @@
-// Tests for the typed API fetchers (getRoutes, getSegments). They check that
-// each fetcher calls the right URL, passes the right params, and hands back the
-// data. There is no real backend here: we replace the axios client with a fake,
-// so nothing leaves the test process.
+// Tests for the typed API fetchers (getRoutes, getSegments, getForecast). They
+// check that each fetcher calls the right URL, passes the right params, and
+// hands back the data. There is no real backend here: we replace the axios
+// client with a fake, so nothing leaves the test process.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Route, Segment } from "./types";
+import golden from "../../../shared/weather-regime-cases.json";
+import { REGIME_CODES } from "./types";
+import type { ForecastResponse, Route, Segment } from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
-// control. This line runs before the imports below, so getRoutes/getSegments
-// pick up the fake `api` instead of the real one.
+// control. This line runs before the imports below, so the fetchers pick up the
+// fake `api` instead of the real one.
 vi.mock("./client", () => ({ api: { get: vi.fn() } }));
 
 // Imported after the mock above so they use the fake client.
 import { api } from "./client";
 import { getRoutes } from "./routes";
 import { getSegments } from "./segments";
+import { getForecast } from "./forecast";
 
 // Sample responses the fake will return, in the same shape the real API sends.
 const ROUTES: Route[] = [
@@ -29,6 +32,25 @@ const ROUTES: Route[] = [
 const SEGMENTS: Segment[] = [
   { id: "I-80:truckee", routeId: "I-80", name: "Truckee", lat: 39.328, lon: -120.1833 },
 ];
+const FORECAST: ForecastResponse = {
+  routeId: "I-80",
+  fromSegmentId: "I-80:truckee",
+  toSegmentId: "I-80:truckee",
+  departureUtc: "2026-01-12T15:00:00+00:00",
+  generatedAtUtc: "2026-01-12T15:02:00+00:00",
+  segments: [
+    {
+      segment: SEGMENTS[0],
+      regime: "SNOW",
+      temperatureHighF: 28.4,
+      temperatureLowF: 27.5,
+      windGustMph: 12,
+      visibilityMiles: 2,
+      precipProbabilityPct: 80,
+      shortForecast: "Snow",
+    },
+  ],
+};
 
 // A typed handle to the fake `get`, so we can set what it returns and check how
 // it was called.
@@ -71,6 +93,33 @@ describe("getSegments", () => {
   });
 });
 
+describe("getForecast", () => {
+  it("sends route, from, to and departure as query params and returns the forecast", async () => {
+    mockGet.mockResolvedValue({ data: FORECAST });
+
+    const departure = "2026-01-12T15:00:00.000Z";
+    const forecast = await getForecast("I-80", "I-80:colfax", "I-80:truckee", departure);
+
+    // The segment ids and departure map to the endpoint's query params.
+    expect(mockGet).toHaveBeenCalledWith("/api/forecast", {
+      params: { route: "I-80", from: "I-80:colfax", to: "I-80:truckee", departure },
+    });
+    expect(forecast.segments[0].regime).toBe("SNOW");
+    expect(forecast.segments[0].shortForecast).toBe("Snow");
+  });
+});
+
+// REGIME_CODES is a hand-written mirror of pipeline/regime.py's REGIMES. The
+// shared golden file exercises every regime, so set-equality against its
+// expected labels catches a vocabulary change (a regime added, renamed or
+// removed) that skipped this copy. Ordering is asserted on the backend side
+// (test_regime_contract.py pins worst-first ends of REGIMES).
+describe("regime vocabulary stays in sync with the shared contract", () => {
+  it("REGIME_CODES matches the golden cases' expected labels", () => {
+    expect(new Set(REGIME_CODES)).toEqual(new Set(golden.cases.map((c) => c.expected)));
+  });
+});
+
 // Mirrors backend/tests/test_forbidden_keys.py on the frontend side: the
 // contract stays descriptive, so no field name may look like a safety judgement
 // (a score, rating, verdict, and so on).
@@ -87,9 +136,11 @@ describe("no safety judgement in the contract", () => {
     return [];
   };
 
-  it("routes and segments carry no score/rating/verdict keys", () => {
-    // Gather every key name from both sample payloads, lower-cased.
-    const all = [...keys(ROUTES), ...keys(SEGMENTS)].map((k) => k.toLowerCase());
+  it("routes, segments and the forecast carry no score/rating/verdict keys", () => {
+    // Gather every key name from all sample payloads, lower-cased.
+    const all = [...keys(ROUTES), ...keys(SEGMENTS), ...keys(FORECAST)].map((k) =>
+      k.toLowerCase(),
+    );
 
     // None of them should contain a forbidden word.
     expect(all.filter((k) => FORBIDDEN.some((word) => k.includes(word)))).toEqual([]);

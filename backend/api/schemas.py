@@ -59,3 +59,31 @@ class Segment(CamelModel):
     name: str
     lat: float
     lon: float
+
+
+class SegmentForecast(CamelModel):
+    """Forecast for one town over the departure window (a fixed number of hours
+    from the driver's start time). The values summarize that window: the worst
+    regime, the temperature range, and the roughest wind/visibility/precip an
+    hour in the window reaches, so the card can show conditions for the drive
+    rather than for one instant. Any field is null when no hour supplied it."""
+
+    segment: Segment
+    regime: str
+    temperature_high_f: float | None
+    temperature_low_f: float | None
+    wind_gust_mph: float | None
+    visibility_miles: float | None
+    precip_probability_pct: int | None
+    short_forecast: str | None
+
+
+class ForecastResponse(CamelModel):
+    """GET /api/forecast?route=&from=&to=&departure="""
+
+    route_id: str
+    from_segment_id: str
+    to_segment_id: str
+    departure_utc: str
+    generated_at_utc: str
+    segments: list[SegmentForecast]
