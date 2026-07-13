@@ -6,6 +6,9 @@
     "module": "esnext",
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
+    // The contract test imports shared/weather-regime-cases.json to pin the
+    // regime vocabulary; Vite bundles JSON natively, this just types it.
+    "resolveJsonModule": true,
     "skipLibCheck": true,
 
     /* Bundler mode */

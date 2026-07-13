@@ -1,8 +1,8 @@
 """Sierra Safe API: builds the FastAPI app.
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
-field. Live now: /api/health, /api/routes, /api/segments. Later branches add
-forecast, crash-patterns, hotspots and the alerts feed.
+field. Live now: /api/health, /api/routes, /api/segments, /api/forecast. Later
+branches add crash-patterns, hotspots and the alerts feed.
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -16,7 +16,8 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Request
+import httpx
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -24,8 +25,14 @@ from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
 from api.db import create_pool
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
-from api.schemas import Health, Route, Segment
+from api.schemas import ForecastResponse, Health, Route, Segment
 from api.segments import SegmentRepository, get_segment_repository
+from api.weather import (
+    ForecastService,
+    OpenMeteoForecastProvider,
+    get_forecast_service,
+    parse_departure,
+)
 
 log = logging.getLogger(__name__)
 
@@ -47,12 +54,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # database connection is made until the first query).
         app.state.catalog = RouteCatalog.load(settings.shared_dir)
         app.state.pool = create_pool(settings.database_url)
+        # One HTTP client for Open-Meteo: fixed base URL plus a hard timeout, so
+        # the SSRF and timeout guards live here, not at each call site. The
+        # service holds the 5-minute per-coordinate cache for the process life.
+        app.state.open_meteo_client = httpx.AsyncClient(
+            base_url=settings.open_meteo_base_url, timeout=10.0
+        )
+        app.state.forecast_service = ForecastService(
+            catalog=app.state.catalog,
+            provider=OpenMeteoForecastProvider(app.state.open_meteo_client),
+        )
         try:
             await app.state.pool.open()
             yield
         finally:
             # Close on normal shutdown, and also if open() failed at startup, so
-            # a failed start never leaks the pool.
+            # a failed start never leaks the pool or the HTTP client.
+            await app.state.open_meteo_client.aclose()
             await app.state.pool.close()
 
     app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
@@ -100,6 +118,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         repository: SegmentRepository = Depends(get_segment_repository),
     ) -> list[Segment]:
         return await repository.get(route)
+
+    # Live forecast along a journey span: Open-Meteo sampled at each town from
+    # `from` to `to` (either direction) over a fixed window starting at
+    # `departure` (an ISO time), each town's hours reduced to one card summary.
+    # Missing/invalid params are the client's error (400); unknown ids are a 404.
+    @app.get("/api/forecast", response_model=ForecastResponse)
+    async def forecast(
+        route: str | None = None,
+        from_: str | None = Query(default=None, alias="from"),
+        to: str | None = None,
+        departure: str | None = None,
+        service: ForecastService = Depends(get_forecast_service),
+    ):
+        if not route or not from_ or not to or not departure:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "route, from, to and departure are required"},
+            )
+        try:
+            departure_at = parse_departure(departure)
+        except ValueError:
+            return JSONResponse(
+                status_code=400, content={"error": "departure must be an ISO 8601 time"}
+            )
+        response = await service.get(route, from_, to, departure_at)
+        if response is None:
+            return JSONResponse(
+                status_code=404, content={"error": "unknown route or segment"}
+            )
+        return response
 
     return app
 

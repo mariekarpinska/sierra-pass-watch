@@ -1,17 +1,33 @@
-import { TOWNS, DAY_LABELS, DAY_DATES, fmtDate, townMile, weatherFor, type Route } from '../lib/data'
+import type { ForecastResponse } from '../api/types'
+import { toSegmentCard } from '../lib/forecastAdapter'
 import { WeatherIcon } from './WeatherIcon'
 import { useReveal } from '../lib/useReveal'
 
 const SEG_COLORS = ['#6E93A2', '#5E8C6A', '#C6902F', '#4E7E86', '#7E93A6', '#8FA05E']
 
 interface Props {
-  route: Route
-  dayIdx: number
-  onDayChange: (dayIdx: number) => void
+  forecast: ForecastResponse
 }
 
-export function WeatherSection({ route, dayIdx, onDayChange }: Props) {
-  const sectionRef = useReveal<HTMLElement>(route)
+// The departure the window started at, shown so the driver knows which slice of
+// the day these conditions cover.
+function departureLabel(iso: string): string {
+  const when = new Date(iso)
+  return when.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+// A dash for a missing number, so a degraded (no-data) town never renders "null".
+const num = (value: number | null): string => (value === null ? '-' : String(value))
+
+export function WeatherSection({ forecast }: Props) {
+  const sectionRef = useReveal<HTMLElement>(forecast)
+  const cards = forecast.segments.map(toSegmentCard)
 
   return (
     <section className="weather" ref={sectionRef}>
@@ -19,49 +35,31 @@ export function WeatherSection({ route, dayIdx, onDayChange }: Props) {
         <span className="kicker">Conditions along the way</span>
         <h2>Forecast along your route</h2>
         <p className="sub">
-          Forecasts are broken out by location so you can see where the drive changes character.
-          Pick a day to plan ahead. Note: Conditions in the Sierra shift in an instant. Always check
-          official sources and use your own judgement.
+          Conditions for the six hours from your departure ({departureLabel(forecast.departureUtc)}),
+          broken out by location so you can see where the drive changes character. Note: conditions
+          in the Sierra shift in an instant. Always check official sources and use your own judgement.
         </p>
       </div>
-      <div className="day-tabs" role="tablist" aria-label="Forecast day">
-        {DAY_LABELS.map((label, i) => (
-          <button
-            key={label}
-            className="day-tab"
-            role="tab"
-            aria-selected={i === dayIdx}
-            onClick={() => onDayChange(i)}
-          >
-            <span>{label}</span>
-            <small>{fmtDate(DAY_DATES[i])}</small>
-          </button>
-        ))}
-      </div>
       <div className="weather-grid">
-        {route.order.map((i, pos) => {
-          const t = TOWNS[i]
-          const w = weatherFor(t, dayIdx)
-          const adverse = w.cond === 'Snow' || w.cond === 'Ice' || w.cond === 'Fog'
+        {cards.map((c, pos) => {
+          const adverse = c.cond === 'Snow' || c.cond === 'Ice' || c.cond === 'Fog'
           return (
-            <div className="wx-card" key={t.id} style={{ '--seg': SEG_COLORS[pos % SEG_COLORS.length] } as React.CSSProperties}>
+            <div className="wx-card" key={c.id} style={{ '--seg': SEG_COLORS[pos % SEG_COLORS.length] } as React.CSSProperties}>
               <div className="wx-loc">
-                <b>{t.id}</b>
-                <span className="mm">
-                  MI {Math.round(townMile(route, i))} · {t.el.toLocaleString()}′
-                </span>
+                <b>{c.name}</b>
+                <span className="mm">{c.regime.replace(/_/g, ' ')}</span>
               </div>
               <div className="wx-icon">
-                <WeatherIcon cond={w.cond} size={44} />
+                <WeatherIcon cond={c.cond} size={44} />
               </div>
-              <div className="wx-cond">{w.cond}</div>
+              <div className="wx-cond">{c.condLabel}</div>
               <div className="wx-temp">
-                {w.hiT}°<small> / {w.loT}°F</small>
+                {num(c.hiT)}°<small> / {num(c.loT)}°F</small>
               </div>
               <div className="wx-meta">
-                <div><span>Wind</span> {w.wind} mph</div>
-                <div><span>Visibility</span> {w.vis}</div>
-                <div><span>Precip chance</span> {w.precip}%</div>
+                <div><span>Wind gust</span> {num(c.wind)} mph</div>
+                <div><span>Visibility</span> {c.vis}</div>
+                <div><span>Precip chance</span> {num(c.precip)}%</div>
               </div>
               {adverse && (
                 <div className="wx-flag">

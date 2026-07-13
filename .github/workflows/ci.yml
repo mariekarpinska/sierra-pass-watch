@@ -36,6 +36,9 @@ jobs:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
+      # The API imports the pipeline's regime classifier, so install the
+      # monorepo root first for `sierra-corridor-pipeline` to resolve locally.
+      - run: pip install -e ..
       - run: pip install -e ".[dev]"
       - run: pytest
       # Testcontainers spins up a real Postgres for the repository test.

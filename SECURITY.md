@@ -3,6 +3,21 @@
 A running record of how security was considered as this repository evolved.
 Each change that touches the security posture appends a dated section.
 
+## 2026-07-10 - feat/forecast-live (outbound-call posture)
+
+- **First outbound call from the API** (Open-Meteo). No SSRF surface: the base
+  URL is fixed configuration (`OPEN_METEO_BASE_URL`) and the query string is
+  built from numeric coordinates, so no user-controlled string ever reaches the
+  request.
+- **Hard timeout plus graceful degradation.** The shared httpx client times out
+  at 10 s; an upstream failure degrades that town's forecast to UNKNOWN instead
+  of surfacing an error (or the upstream's error text) to the client.
+- **Upstream courtesy / self-protection.** A 5-minute in-memory cache per
+  coordinate bounds how often the API can be made to hit Open-Meteo, including
+  under request floods.
+- **Still keyless.** Open-Meteo needs no API key, so nothing new to store,
+  rotate, or leak.
+
 ## 2026-07-10 - feat/api-and-wire-routes (API posture)
 
 - **CORS: explicit allowlist, never a wildcard.** CORS stays off by default,
