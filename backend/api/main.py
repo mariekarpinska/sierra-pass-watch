@@ -1,8 +1,10 @@
 """Sierra Safe API: builds the FastAPI app.
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
-field. Live now: /api/health, /api/routes, /api/segments, /api/forecast. Later
-branches add crash-patterns, hotspots and the alerts feed.
+field, and only what the UI consumes exists: /api/health, /api/towns,
+/api/journey. Later branches add crash-patterns, hotspots and the alerts feed,
+each bringing its own contract (and the database access it needs) when it
+lands.
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -23,10 +25,9 @@ from fastapi.responses import JSONResponse
 
 from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
-from api.db import create_pool
+from api.journeys import JourneyIndex, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
-from api.schemas import ForecastResponse, Health, Route, Segment
-from api.segments import SegmentRepository, get_segment_repository
+from api.schemas import Health, JourneyLeg, JourneyResponse, Waypoint
 from api.weather import (
     ForecastService,
     OpenMeteoForecastProvider,
@@ -50,10 +51,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Startup: load the catalogue once and create the pool (lazy, so no
-        # database connection is made until the first query).
+        # Startup: load the committed catalogue and journey index once; every
+        # request after that is served from memory.
         app.state.catalog = RouteCatalog.load(settings.shared_dir)
-        app.state.pool = create_pool(settings.database_url)
+        app.state.journeys = JourneyIndex.load(settings.shared_dir)
         # One HTTP client for Open-Meteo: fixed base URL plus a hard timeout, so
         # the SSRF and timeout guards live here, not at each call site. The
         # service holds the 5-minute per-coordinate cache for the process life.
@@ -61,17 +62,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             base_url=settings.open_meteo_base_url, timeout=10.0
         )
         app.state.forecast_service = ForecastService(
-            catalog=app.state.catalog,
             provider=OpenMeteoForecastProvider(app.state.open_meteo_client),
         )
         try:
-            await app.state.pool.open()
             yield
         finally:
-            # Close on normal shutdown, and also if open() failed at startup, so
-            # a failed start never leaks the pool or the HTTP client.
             await app.state.open_meteo_client.aclose()
-            await app.state.pool.close()
 
     app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
 
@@ -105,36 +101,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             timestamp_utc=datetime.now(timezone.utc).isoformat(),
         )
 
-    # The full route catalogue, served from memory.
-    @app.get("/api/routes", response_model=list[Route])
-    def routes(catalog: RouteCatalog = Depends(get_catalog)) -> list[Route]:
-        return catalog.routes
+    # The towns the journey picker offers, from the in-memory index (no DB).
+    # Route-independent points, so they are plain Waypoints (no route_id).
+    @app.get("/api/towns", response_model=list[Waypoint])
+    def towns(index: JourneyIndex = Depends(get_journey_index)) -> list[Waypoint]:
+        return [
+            Waypoint(id=slug, name=point.name, lat=point.lat, lon=point.lon)
+            for slug, point in sorted(index.towns.items(), key=lambda kv: kv[1].name)
+        ]
 
-    # Anchor waypoints from the dbt seed, optionally for one route. An unknown
-    # route returns an empty list, not a 404.
-    @app.get("/api/segments", response_model=list[Segment])
-    async def segments(
-        route: str | None = None,
-        repository: SegmentRepository = Depends(get_segment_repository),
-    ) -> list[Segment]:
-        return await repository.get(route)
-
-    # Live forecast along a journey span: Open-Meteo sampled at each town from
-    # `from` to `to` (either direction) over a fixed window starting at
-    # `departure` (an ISO time), each town's hours reduced to one card summary.
-    # Missing/invalid params are the client's error (400); unknown ids are a 404.
-    @app.get("/api/forecast", response_model=ForecastResponse)
-    async def forecast(
-        route: str | None = None,
+    # Multi-highway journey: the anchor towns along the drive from `from` to `to`
+    # (OSRM-routed at build time, so no routing happens here), each with the same
+    # departure-window summary as a single-route stop. Missing/invalid params are
+    # a 400; an unknown town or an unbuilt pair is a 404.
+    @app.get("/api/journey", response_model=JourneyResponse)
+    async def journey(
         from_: str | None = Query(default=None, alias="from"),
         to: str | None = None,
         departure: str | None = None,
         service: ForecastService = Depends(get_forecast_service),
+        index: JourneyIndex = Depends(get_journey_index),
+        catalog: RouteCatalog = Depends(get_catalog),
     ):
-        if not route or not from_ or not to or not departure:
+        if not from_ or not to or not departure:
             return JSONResponse(
-                status_code=400,
-                content={"error": "route, from, to and departure are required"},
+                status_code=400, content={"error": "from, to and departure are required"}
+            )
+        # The index stores no self-pairs, so without this check a same-town
+        # request would fall through to a misleading 404 "unknown town".
+        if from_ == to:
+            return JSONResponse(
+                status_code=400, content={"error": "from and to must be different towns"}
             )
         try:
             departure_at = parse_departure(departure)
@@ -142,12 +139,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(
                 status_code=400, content={"error": "departure must be an ISO 8601 time"}
             )
-        response = await service.get(route, from_, to, departure_at)
-        if response is None:
+        resolved = index.resolve(from_, to)
+        if resolved is None:
             return JSONResponse(
-                status_code=404, content={"error": "unknown route or segment"}
+                status_code=404, content={"error": "unknown town or journey"}
             )
-        return response
+        stops = await service.forecast_towns(resolved.stops, departure_at)
+        # The highways travelled, with the catalogue's seasonal context, so
+        # the UI can name the roads and warn about passes that close.
+        routes_by_id = {route.id: route for route in catalog.routes}
+        via = [
+            JourneyLeg(id=r.id, name=r.name, seasonal=r.seasonal, note=r.note)
+            for road in resolved.via
+            if (r := routes_by_id.get(road)) is not None
+        ]
+        return JourneyResponse(
+            from_id=from_,
+            to_id=to,
+            via=via,
+            departure_utc=departure_at.isoformat(),
+            generated_at_utc=datetime.now(timezone.utc).isoformat(),
+            total_miles=resolved.miles,
+            total_minutes=resolved.minutes,
+            stops=stops,
+        )
 
     return app
 

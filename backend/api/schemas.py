@@ -49,26 +49,30 @@ class Route(CamelModel):
     towns: list[Town]
 
 
-class Segment(CamelModel):
-    """An anchor waypoint: a town/pass where weather is sampled. Ids are
-    "{routeId}:{town-slug}", e.g. "I-80:donner-summit". Crashes are located by
-    per-mile bin (ADR-0007); the anchor is only the weather point."""
+class Waypoint(CamelModel):
+    """A point where weather is sampled: a town or pass, with its coordinates.
+
+    This is all a forecast needs — every WaypointForecast wraps a Waypoint. The
+    id is the bare town slug (e.g. "donner-summit"), route-independent on
+    purpose: a journey crosses highways, so no single route owns a stop. The
+    crash-history branches work at a different grain entirely — per-mile bins
+    along a route (ADR-0007) — and will bring their own route-scoped contract;
+    the waypoint is only the weather point."""
 
     id: str
-    route_id: str
     name: str
     lat: float
     lon: float
 
 
-class SegmentForecast(CamelModel):
+class WaypointForecast(CamelModel):
     """Forecast for one town over the departure window (a fixed number of hours
     from the driver's start time). The values summarize that window: the worst
     regime, the temperature range, and the roughest wind/visibility/precip an
     hour in the window reaches, so the card can show conditions for the drive
     rather than for one instant. Any field is null when no hour supplied it."""
 
-    segment: Segment
+    waypoint: Waypoint
     regime: str
     temperature_high_f: float | None
     temperature_low_f: float | None
@@ -78,12 +82,29 @@ class SegmentForecast(CamelModel):
     short_forecast: str | None
 
 
-class ForecastResponse(CamelModel):
-    """GET /api/forecast?route=&from=&to=&departure="""
+class JourneyLeg(CamelModel):
+    """One highway of a journey, with the catalogue's seasonal context so the
+    UI can warn when a trip crosses a pass that closes for the winter."""
 
-    route_id: str
-    from_segment_id: str
-    to_segment_id: str
+    id: str
+    name: str
+    seasonal: bool
+    note: str
+
+
+class JourneyResponse(CamelModel):
+    """GET /api/journey?from=&to=&departure=
+
+    A multi-highway trip: the anchor towns along the drive (OSRM-routed at build
+    time), each with the same departure-window summary as a single-route stop,
+    plus the highways travelled (`via`), in order.
+    """
+
+    from_id: str
+    to_id: str
+    via: list[JourneyLeg]
     departure_utc: str
     generated_at_utc: str
-    segments: list[SegmentForecast]
+    total_miles: float
+    total_minutes: int
+    stops: list[WaypointForecast]

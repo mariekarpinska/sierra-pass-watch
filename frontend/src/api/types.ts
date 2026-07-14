@@ -1,7 +1,9 @@
 /**
  * The API contract, mirrored from backend/api/schemas.py. camelCase, exactly as
  * it comes off the wire. Components import these types; the fetchers in
- * routes.ts / segments.ts return them.
+ * towns.ts / journey.ts return them. The API serves exactly what the UI
+ * consumes — the crash-history and hotspot branches bring their own contract
+ * when they land (ADR-0007, ADR-0009).
  *
  * Deliberate contract rule: everything here is historical or descriptive. There
  * is no score, rating, or drive/do-not-drive field, and contract.test.ts guards
@@ -27,38 +29,15 @@ export const REGIME_CODES = [
 
 export type RegimeCode = (typeof REGIME_CODES)[number];
 
-/** A forecast point / populated place along a route. */
-export interface Town {
-  name: string;
-  lat: number;
-  lon: number;
-}
-
-/** One tracked Sierra Nevada road, from the route catalogue (GET /api/routes). */
-export interface Route {
-  /** Canonical id, e.g. "I-80", "SR-120". */
-  id: string;
-  /** Crossing / corridor name, e.g. "Donner Pass". */
-  name: string;
-  /** Caltrans road number, for closure lookups. */
-  roadNo: string;
-  /** True if the pass closes seasonally. */
-  seasonal: boolean;
-  /** Short context shown in the UI. */
-  note: string;
-  /** Towns in travel order along the route. */
-  towns: Town[];
-}
-
 /**
- * An anchor waypoint (GET /api/segments): a town where weather is sampled.
- * Crashes are located by per-mile bin (ADR-0007); the anchor is only the
- * weather point.
+ * A point where weather is sampled: a town or pass, with its coordinates. This
+ * is all a forecast needs — every WaypointForecast wraps a Waypoint. The id is
+ * the bare town slug (e.g. "donner-summit"), route-independent on purpose: a
+ * journey crosses highways, so no single route owns a stop.
  */
-export interface Segment {
-  /** "{routeId}:{town-slug}", e.g. "I-80:donner-summit". */
+export interface Waypoint {
+  /** The town slug, e.g. "donner-summit". */
   id: string;
-  routeId: string;
   /** Human name, e.g. "Donner Summit". */
   name: string;
   lat: number;
@@ -72,8 +51,8 @@ export interface Segment {
  * temperature range, and the roughest wind/visibility/precip any hour reaches.
  * Any field is null when no hour supplied it (e.g. the upstream was down).
  */
-export interface SegmentForecast {
-  segment: Segment;
+export interface WaypointForecast {
+  waypoint: Waypoint;
   /** Worst regime across the window: what the card keys its condition on. */
   regime: RegimeCode;
   temperatureHighF: number | null;
@@ -85,13 +64,34 @@ export interface SegmentForecast {
   shortForecast: string | null;
 }
 
-/** GET /api/forecast?route=&from=&to=&departure= */
-export interface ForecastResponse {
-  routeId: string;
-  fromSegmentId: string;
-  toSegmentId: string;
-  /** The departure time the window started at, normalized to UTC. */
+/**
+ * One highway of a journey, with the catalogue's seasonal context so the UI
+ * can warn when the trip crosses a pass that closes for the winter.
+ */
+export interface JourneyLeg {
+  /** Route id, e.g. "SR-120". */
+  id: string;
+  /** Crossing / corridor name, e.g. "Tioga Pass". */
+  name: string;
+  /** True if the pass closes seasonally. */
+  seasonal: boolean;
+  /** Short context, e.g. "closed ~Nov-May". */
+  note: string;
+}
+
+/**
+ * GET /api/journey?from=&to=&departure= (may cross several highways).
+ * The anchor towns along the OSRM-routed drive, each with the same
+ * departure-window summary as a single-route stop, plus the highways
+ * travelled (`via`), in order.
+ */
+export interface JourneyResponse {
+  fromId: string;
+  toId: string;
+  via: JourneyLeg[];
   departureUtc: string;
   generatedAtUtc: string;
-  segments: SegmentForecast[];
+  totalMiles: number;
+  totalMinutes: number;
+  stops: WaypointForecast[];
 }

@@ -8,10 +8,10 @@
  * Every numeric field can be null (a town degrades to no-data when Open-Meteo
  * is down), so the card formats them null-safely; here we only translate.
  */
-import type { RegimeCode, SegmentForecast } from '../api/types'
+import type { RegimeCode, WaypointForecast } from '../api/types'
 import type { Condition } from './data'
 
-export interface SegmentCard {
+export interface WaypointCard {
   id: string
   name: string
   regime: RegimeCode
@@ -38,19 +38,19 @@ const REGIME_CONDITION: Record<RegimeCode, Condition> = {
   UNKNOWN: 'Cloudy',
 }
 
-function condition(seg: SegmentForecast): Condition {
+function condition(stop: WaypointForecast): Condition {
   // Refine the regime's default with the short text where it adds detail the
   // regime label alone does not carry (rain vs fog, clear vs cloudy).
-  const text = seg.shortForecast?.toLowerCase() ?? ''
-  if (seg.regime === 'RAIN_FOG_LOW_VIS') {
+  const text = stop.shortForecast?.toLowerCase() ?? ''
+  if (stop.regime === 'RAIN_FOG_LOW_VIS') {
     return text.includes('rain') || text.includes('drizzle') ? 'Rain' : 'Fog'
   }
-  if (seg.regime === 'CLEAR_DRY') {
+  if (stop.regime === 'CLEAR_DRY') {
     if (text.includes('overcast')) return 'Cloudy'
     if (text.includes('partly')) return 'Partly Cloudy'
     return 'Clear'
   }
-  return REGIME_CONDITION[seg.regime]
+  return REGIME_CONDITION[stop.regime]
 }
 
 // Buckets a single visibility number into the qualitative range the card shows.
@@ -63,18 +63,18 @@ function visLabel(miles: number | null): string {
   return '6+ mi'
 }
 
-export function toSegmentCard(seg: SegmentForecast): SegmentCard {
-  const cond = condition(seg)
+export function toWaypointCard(stop: WaypointForecast): WaypointCard {
+  const cond = condition(stop)
   return {
-    id: seg.segment.id,
-    name: seg.segment.name,
-    regime: seg.regime,
+    id: stop.waypoint.id,
+    name: stop.waypoint.name,
+    regime: stop.regime,
     cond,
-    condLabel: seg.shortForecast ?? (seg.regime === 'UNKNOWN' ? 'No data' : cond),
-    hiT: seg.temperatureHighF,
-    loT: seg.temperatureLowF,
-    wind: seg.windGustMph,
-    vis: visLabel(seg.visibilityMiles),
-    precip: seg.precipProbabilityPct,
+    condLabel: stop.shortForecast ?? (stop.regime === 'UNKNOWN' ? 'No data' : cond),
+    hiT: stop.temperatureHighF,
+    loT: stop.temperatureLowF,
+    wind: stop.windGustMph,
+    vis: visLabel(stop.visibilityMiles),
+    precip: stop.precipProbabilityPct,
   }
 }

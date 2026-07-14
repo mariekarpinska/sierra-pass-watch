@@ -1,5 +1,5 @@
 {
-  "description": "Sierra Nevada route catalogue, exported from pipeline/routes.ROUTES. The API serves this as GET /api/routes; a pipeline test asserts it matches the code so it cannot drift.",
+  "description": "Sierra Nevada route catalogue, exported from pipeline/routes.ROUTES. The API loads this at startup (journey legs read each highway's name and seasonal note); a pipeline test asserts it matches the code so it cannot drift.",
   "routes": [
     {
       "id": "I-80",

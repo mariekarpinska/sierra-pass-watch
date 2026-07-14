@@ -16,3 +16,5 @@ Alternatives considered / Consequences**.
 | [0005](0005-database.md) | Database | Accepted |
 | [0006](0006-data-plane.md) | Data plane: Kafka, dbt, Airflow — and not Spark | Accepted |
 | [0007](0007-spatial-model-per-mile-bins.md) | Spatial model: linear referencing + per-mile bins | Accepted |
+| [0008](0008-near-realtime-alerts.md) | Near real-time alerts: change events on a second stream | Accepted |
+| [0009](0009-journey-routing.md) | Multi-highway journeys: build-time OSRM precompute | Accepted |

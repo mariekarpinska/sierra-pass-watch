@@ -5,32 +5,39 @@ import { Planner, type Plan } from './components/Planner'
 import { WeatherSection } from './components/WeatherSection'
 import { MuirQuote } from './components/MuirQuote'
 import { Footer, DisclaimerPill } from './components/Footer'
-import { getForecast } from './api/forecast'
+import { getJourney } from './api/journey'
 import { isAppError } from './api/client'
-import type { ForecastResponse } from './api/types'
+import type { JourneyResponse } from './api/types'
 
-// The forecast request has three visible outcomes; model them explicitly so the
+// The journey request has three visible outcomes; model them explicitly so the
 // results area never shows a half state (mirrors components/BackendStatus.tsx).
 type Result =
   | { phase: 'idle' }
   | { phase: 'loading' }
-  | { phase: 'ok'; forecast: ForecastResponse }
+  | { phase: 'ok'; journey: JourneyResponse }
   | { phase: 'error'; message: string }
 
 export function App() {
   const [result, setResult] = useState<Result>({ phase: 'idle' })
   const resultsRef = useRef<HTMLDivElement | null>(null)
+  // Monotonic id so a slow response from an abandoned plan can't overwrite a
+  // newer one (the user can resubmit before the first request resolves).
+  const latestRequest = useRef(0)
 
   const plan = (p: Plan) => {
+    const requestId = ++latestRequest.current
     setResult({ phase: 'loading' })
-    getForecast(p.routeId, p.fromId, p.toId, p.departureUtc)
-      .then((forecast) => setResult({ phase: 'ok', forecast }))
-      .catch((err: unknown) =>
+    getJourney(p.fromId, p.toId, p.departureUtc)
+      .then((journey) => {
+        if (requestId === latestRequest.current) setResult({ phase: 'ok', journey })
+      })
+      .catch((err: unknown) => {
+        if (requestId !== latestRequest.current) return
         setResult({
           phase: 'error',
           message: isAppError(err) ? err.message : 'Could not load the forecast.',
-        }),
-      )
+        })
+      })
   }
 
   // Scroll to the results once they render. Keying on the phase runs this after
@@ -58,7 +65,7 @@ export function App() {
                 <strong style={{ color: 'var(--clay)' }}>{result.message}</strong>
               </p>
             )}
-            {result.phase === 'ok' && <WeatherSection forecast={result.forecast} />}
+            {result.phase === 'ok' && <WeatherSection journey={result.journey} />}
           </div>
         )}
         <MuirQuote />
