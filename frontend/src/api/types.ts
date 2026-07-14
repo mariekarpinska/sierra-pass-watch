@@ -1,7 +1,9 @@
 /**
  * The API contract, mirrored from backend/api/schemas.py. camelCase, exactly as
  * it comes off the wire. Components import these types; the fetchers in
- * routes.ts / segments.ts return them.
+ * towns.ts / journey.ts return them. Only the endpoints the UI consumes are
+ * mirrored here; the backend also serves /api/routes, /api/segments and
+ * /api/forecast for the upcoming crash-history work (see ADR-0009).
  *
  * Deliberate contract rule: everything here is historical or descriptive. There
  * is no score, rating, or drive/do-not-drive field, and contract.test.ts guards
@@ -26,29 +28,6 @@ export const REGIME_CODES = [
 ] as const;
 
 export type RegimeCode = (typeof REGIME_CODES)[number];
-
-/** A forecast point / populated place along a route. */
-export interface Town {
-  name: string;
-  lat: number;
-  lon: number;
-}
-
-/** One tracked Sierra Nevada road, from the route catalogue (GET /api/routes). */
-export interface Route {
-  /** Canonical id, e.g. "I-80", "SR-120". */
-  id: string;
-  /** Crossing / corridor name, e.g. "Donner Pass". */
-  name: string;
-  /** Caltrans road number, for closure lookups. */
-  roadNo: string;
-  /** True if the pass closes seasonally. */
-  seasonal: boolean;
-  /** Short context shown in the UI. */
-  note: string;
-  /** Towns in travel order along the route. */
-  towns: Town[];
-}
 
 /**
  * An anchor waypoint (GET /api/segments): a town where weather is sampled.
@@ -83,17 +62,6 @@ export interface SegmentForecast {
   precipProbabilityPct: number | null;
   /** Descriptive short text for the worst hour, e.g. "Snow". Never a judgement. */
   shortForecast: string | null;
-}
-
-/** GET /api/forecast?route=&from=&to=&departure= (single highway) */
-export interface ForecastResponse {
-  routeId: string;
-  fromSegmentId: string;
-  toSegmentId: string;
-  /** The departure time the window started at, normalized to UTC. */
-  departureUtc: string;
-  generatedAtUtc: string;
-  segments: SegmentForecast[];
 }
 
 /**

@@ -62,3 +62,8 @@ OSRM call, and no database touch happens at request time.
   Arbitrary lat/lon origins are out of scope by design.
 - The public OSRM demo server is fine for this build-time, run-rarely use; a
   heavier cadence would self-host OSRM. Noted, not a runtime concern.
+- The frontend consumes only `/api/towns` and `/api/journey`; its single-route
+  fetchers were deleted with the planner rewrite. The backend keeps serving
+  `/api/routes`, `/api/segments` and `/api/forecast` deliberately — the
+  crash-history and hotspot branches read per-route, per-segment data
+  (ADR-0007), so those endpoints are their contract, not leftovers.
