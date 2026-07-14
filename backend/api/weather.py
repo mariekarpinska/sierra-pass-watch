@@ -286,13 +286,17 @@ class ForecastService:
         if from_index > to_index:
             span = list(reversed(span))
 
+        # Fetch first, stamp second: kwargs evaluate left to right, so an
+        # inline await here would date generated_at before the upstream calls
+        # (and disagree with /api/journey, which stamps after fetching).
+        segments = await self.forecast_towns(span, departure)
         return ForecastResponse(
             route_id=route.id,
             from_segment_id=from_segment_id,
             to_segment_id=to_segment_id,
             departure_utc=departure.isoformat(),
             generated_at_utc=datetime.now(timezone.utc).isoformat(),
-            segments=await self.forecast_towns(span, departure),
+            segments=segments,
         )
 
     async def forecast_towns(
