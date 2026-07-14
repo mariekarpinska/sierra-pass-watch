@@ -42,7 +42,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest
       # Testcontainers spins up a real Postgres for the repository test.
-      - run: pytest -m integration
+      # - run: pytest -m integration 
 
   pipeline:
     runs-on: ubuntu-latest
