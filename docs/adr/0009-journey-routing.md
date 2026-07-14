@@ -60,6 +60,13 @@ OSRM call, and no database touch happens at request time.
   is re-run by hand only when the catalogue's towns change, which is rare.
 - Coverage is exactly the catalogue town pairs, which is all the picker offers.
   Arbitrary lat/lon origins are out of scope by design.
+- Each pair is routed in one direction only; the reverse trip is the forward
+  journey reversed, reusing its stops, miles and minutes. A return drive can
+  differ in reality (one-way couplets, interchange ramps), but at the 2.5 mi
+  anchor buffer those differences do not move which towns the drive passes,
+  and OSRM's car profile would return near-identical durations anyway. If a
+  reverse drive ever genuinely takes a different corridor, the fix is to
+  build both directions (~2,352 calls instead of ~1,176), not to route live.
 - The public OSRM demo server is fine for this build-time, run-rarely use; a
   heavier cadence would self-host OSRM. Noted, not a runtime concern.
 - The frontend consumes only `/api/towns` and `/api/journey`; its single-route

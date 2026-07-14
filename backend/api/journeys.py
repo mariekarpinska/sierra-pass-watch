@@ -66,6 +66,10 @@ class JourneyIndex(BaseModel):
         if entry is None:
             return None
         # Stored order runs from the smaller id; flip it when the trip does.
+        # Deliberate simplification: OSRM is only asked for one direction, so
+        # the reverse trip reuses the forward stops, miles and minutes. At
+        # anchor-town granularity (2.5 mi buffer) a return drive lands on the
+        # same anchors; see ADR-0009 for the trade-off.
         forward = from_id == lo
         slugs = entry.towns if forward else list(reversed(entry.towns))
         via = entry.routes if forward else list(reversed(entry.routes))
