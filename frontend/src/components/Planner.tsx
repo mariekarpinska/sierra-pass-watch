@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getTowns } from '../api/towns'
 import { isAppError } from '../api/client'
 import type { Segment } from '../api/types'
@@ -48,9 +48,16 @@ export function Planner({ onPlan }: Props) {
     }
   }, [])
 
+  // One flash timer at a time: a new flash cancels the previous one (an old
+  // timer would otherwise wipe a newer message early), and unmount cancels
+  // whatever is pending so the timeout can't fire on a gone component.
+  const flashTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(flashTimer.current), [])
+
   const flashFor = (message: string) => {
+    window.clearTimeout(flashTimer.current)
     setFlash(message)
-    window.setTimeout(() => setFlash(null), 3200)
+    flashTimer.current = window.setTimeout(() => setFlash(null), 3200)
   }
 
   const submit = (e: FormEvent) => {
