@@ -54,6 +54,8 @@ class TestCommittedFile:
             lo, hi = key.split("|")
             assert lo < hi and lo in towns and hi in towns  # sorted pair key
             stops = entry["towns"]
-            assert lo in stops and hi in stops  # both endpoints are on the drive
+            # The drive starts and ends at the requested towns - no stop past
+            # the destination (the on-route buffer used to leak one in).
+            assert {stops[0], stops[-1]} == {lo, hi}
             assert len(stops) == len(set(stops))  # no town listed twice
             assert entry["miles"] > 0 and entry["minutes"] > 0

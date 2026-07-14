@@ -101,6 +101,11 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             log.error("journey failed: %s->%s error=%s", slug_a, slug_b, exc)
             continue
         ordered = towns_along(route["coordinates"], towns)
+        # Clamp to the endpoints: the on-route buffer can catch a town sitting
+        # just past the origin or destination (Stateline is within 2.5 mi of a
+        # route that ends at South Lake Tahoe) - the drive never reaches it.
+        first, last = sorted((ordered.index(slug_a), ordered.index(slug_b)))
+        ordered = ordered[first : last + 1]
         journeys[f"{slug_a}|{slug_b}"] = {
             "towns": ordered,
             "miles": round(route["miles"], 1),
