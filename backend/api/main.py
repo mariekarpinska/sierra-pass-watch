@@ -184,6 +184,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(
                 status_code=400, content={"error": "from, to and departure are required"}
             )
+        # The index stores no self-pairs, so without this check a same-town
+        # request would fall through to a misleading 404 "unknown town".
+        if from_ == to:
+            return JSONResponse(
+                status_code=400, content={"error": "from and to must be different towns"}
+            )
         try:
             departure_at = parse_departure(departure)
         except ValueError:

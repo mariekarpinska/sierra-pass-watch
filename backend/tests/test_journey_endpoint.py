@@ -76,6 +76,17 @@ def test_unparseable_departure_is_a_400(client) -> None:
     assert response.json() == {"error": "departure must be an ISO 8601 time"}
 
 
+def test_same_town_twice_is_a_400_not_a_confusing_404(client) -> None:
+    # "colfax|colfax" is never built, so without the explicit check this
+    # would 404 as "unknown town" for a town the picker offers.
+    response = _journey(
+        client, departure=DEPARTURE, **{"from": "colfax", "to": "colfax"}
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "from and to must be different towns"}
+
+
 def test_unknown_town_is_a_404(client) -> None:
     response = _journey(
         client, departure=DEPARTURE, **{"from": "colfax", "to": "narnia"}
