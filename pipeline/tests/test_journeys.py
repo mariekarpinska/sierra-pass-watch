@@ -51,7 +51,10 @@ class TestCommittedFile:
     data = json.loads((REPO / "shared" / "route-journeys.json").read_text(encoding="utf-8"))
 
     def test_town_directory_matches_the_catalogue(self) -> None:
-        assert set(self.data["towns"]) == set(unique_towns())
+        # Full equality, not just the slug set: a lat/lon or name edited in
+        # routes.py must fail here until build_journeys is re-run, or the
+        # journey index silently serves stale coordinates.
+        assert self.data["towns"] == unique_towns()
 
     def test_every_town_pair_is_present_exactly_once(self) -> None:
         expected = {f"{a}|{b}" for a, b in itertools.combinations(sorted(self.data["towns"]), 2)}
