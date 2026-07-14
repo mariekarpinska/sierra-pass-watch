@@ -9,8 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from api.schemas import Segment
-from api.segments import get_segment_repository
+from api.weather import ForecastService, HourlySample, get_forecast_service
 
 # Substrings that would signal a judgement leaking into the contract.
 _FORBIDDEN = ("score", "rating", "recommend", "verdict", "grade", "shoulddrive")
@@ -29,20 +28,44 @@ def _keys(payload: object) -> set[str]:
     return found
 
 
-class _FakeSegments:
-    async def get(self, route_id: str | None) -> list[Segment]:
-        return [Segment(id="I-80:colfax", route_id="I-80", name="Colfax", lat=39.1, lon=-120.9)]
+class _OneClearHour:
+    """The provider seam faked with one benign hour, so /api/journey returns a
+    fully-populated stop (every contract field present) without a network."""
+
+    async def get_hourly(
+        self, lat: float, lon: float, start_hour: str, end_hour: str
+    ) -> list[HourlySample]:
+        return [
+            HourlySample(
+                time_utc="2026-01-12T15:00",
+                temperature_c=4.0,
+                surface_temp_c=4.0,
+                snowfall_rate_in_hr=0.0,
+                wind_gust_mph=8.0,
+                visibility_miles=9.0,
+                precip_probability_pct=10.0,
+                weather_code=1,
+            ),
+        ]
 
 
 @pytest.fixture()
 def client():
     app = create_app()
-    app.dependency_overrides[get_segment_repository] = _FakeSegments
+    service = ForecastService(provider=_OneClearHour())
+    app.dependency_overrides[get_forecast_service] = lambda: service
     with TestClient(app) as test_client:
         yield test_client
 
 
-@pytest.mark.parametrize("path", ["/api/health", "/api/routes", "/api/segments"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/health",
+        "/api/towns",
+        "/api/journey?from=colfax&to=south-lake-tahoe&departure=2026-01-12T15:00:00Z",
+    ],
+)
 def test_no_response_carries_a_safety_judgement(client, path) -> None:
     keys = {k.lower() for k in _keys(client.get(path).json())}
     leaked = {k for k in keys if any(word in k for word in _FORBIDDEN)}

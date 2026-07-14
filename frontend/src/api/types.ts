@@ -1,9 +1,9 @@
 /**
  * The API contract, mirrored from backend/api/schemas.py. camelCase, exactly as
  * it comes off the wire. Components import these types; the fetchers in
- * towns.ts / journey.ts return them. Only the endpoints the UI consumes are
- * mirrored here; the backend also serves /api/routes, /api/segments and
- * /api/forecast for the upcoming crash-history work (see ADR-0009).
+ * towns.ts / journey.ts return them. The API serves exactly what the UI
+ * consumes — the crash-history and hotspot branches bring their own contract
+ * when they land (ADR-0007, ADR-0009).
  *
  * Deliberate contract rule: everything here is historical or descriptive. There
  * is no score, rating, or drive/do-not-drive field, and contract.test.ts guards
@@ -30,17 +30,14 @@ export const REGIME_CODES = [
 export type RegimeCode = (typeof REGIME_CODES)[number];
 
 /**
- * An anchor waypoint: a town where weather is sampled. Two id forms share
- * this shape: /api/segments serves route-scoped anchors ("I-80:donner-summit"
- * with a real routeId), while /api/towns and journey stops are
- * route-independent (a bare town slug like "donner-summit", routeId blank,
- * because a journey crosses highways).
+ * A point where weather is sampled: a town or pass, with its coordinates. This
+ * is all a forecast needs — every WaypointForecast wraps a Waypoint. The id is
+ * the bare town slug (e.g. "donner-summit"), route-independent on purpose: a
+ * journey crosses highways, so no single route owns a stop.
  */
-export interface Segment {
-  /** "{routeId}:{town-slug}" from /api/segments; a bare town slug elsewhere. */
+export interface Waypoint {
+  /** The town slug, e.g. "donner-summit". */
   id: string;
-  /** The owning route, or "" for route-independent town/journey points. */
-  routeId: string;
   /** Human name, e.g. "Donner Summit". */
   name: string;
   lat: number;
@@ -54,8 +51,8 @@ export interface Segment {
  * temperature range, and the roughest wind/visibility/precip any hour reaches.
  * Any field is null when no hour supplied it (e.g. the upstream was down).
  */
-export interface SegmentForecast {
-  segment: Segment;
+export interface WaypointForecast {
+  waypoint: Waypoint;
   /** Worst regime across the window: what the card keys its condition on. */
   regime: RegimeCode;
   temperatureHighF: number | null;
@@ -96,5 +93,5 @@ export interface JourneyResponse {
   generatedAtUtc: string;
   totalMiles: number;
   totalMinutes: number;
-  stops: SegmentForecast[];
+  stops: WaypointForecast[];
 }

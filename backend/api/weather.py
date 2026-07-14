@@ -38,8 +38,7 @@ from pipeline.regime import REGIMES, classify_conditions
 # by the pipeline's readings, or the same weather gets two different labels.
 from pipeline.sources.openmeteo import CM_TO_IN, KMH_TO_MPH, M_TO_MILES
 
-from api.catalog import RouteCatalog, segments_for_route
-from api.schemas import ForecastResponse, Segment, SegmentForecast
+from api.schemas import Waypoint, WaypointForecast
 
 log = logging.getLogger(__name__)
 
@@ -252,60 +251,20 @@ def _round2(value: float | None) -> float | None:
 
 
 class ForecastService:
-    """Builds the /api/forecast response: resolves the journey span from the
-    route catalogue, samples Open-Meteo at each town over the departure window,
-    and reduces each town's hours to one card-shaped summary."""
+    """Samples Open-Meteo at each town of a journey over the departure window
+    and reduces each town's hours to one card-shaped summary (the /api/journey
+    stops)."""
 
-    def __init__(self, catalog: RouteCatalog, provider: ForecastProvider) -> None:
-        self._catalog = catalog
+    def __init__(self, provider: ForecastProvider) -> None:
         self._provider = provider
         self._cache = _TtlCache(CACHE_TTL_SECONDS)
 
-    async def get(
-        self,
-        route_id: str,
-        from_segment_id: str,
-        to_segment_id: str,
-        departure: datetime,
-    ) -> ForecastResponse | None:
-        """None means unknown route or segment (the endpoint turns it into a 404)."""
-        route = next((r for r in self._catalog.routes if r.id == route_id), None)
-        if route is None:
-            return None
-
-        segments = segments_for_route(route)
-        ids = [s.id for s in segments]
-        if from_segment_id not in ids or to_segment_id not in ids:
-            return None
-        from_index, to_index = ids.index(from_segment_id), ids.index(to_segment_id)
-
-        # Journeys run either way along the road; slice the town list
-        # accordingly and keep travel order.
-        lo, hi = sorted((from_index, to_index))
-        span = segments[lo : hi + 1]
-        if from_index > to_index:
-            span = list(reversed(span))
-
-        # Fetch first, stamp second: kwargs evaluate left to right, so an
-        # inline await here would date generated_at before the upstream calls
-        # (and disagree with /api/journey, which stamps after fetching).
-        segments = await self.forecast_towns(span, departure)
-        return ForecastResponse(
-            route_id=route.id,
-            from_segment_id=from_segment_id,
-            to_segment_id=to_segment_id,
-            departure_utc=departure.isoformat(),
-            generated_at_utc=datetime.now(timezone.utc).isoformat(),
-            segments=segments,
-        )
-
     async def forecast_towns(
-        self, towns: list[Segment], departure: datetime
-    ) -> list[SegmentForecast]:
-        """Each town's departure-window summary. Shared by the single-route
-        forecast and the multi-highway journey, so both label conditions the
-        same way. Inclusive hour stamps: WINDOW_HOURS hours starting at the
-        departure hour (departure plus five more when WINDOW_HOURS is 6).
+        self, towns: list[Waypoint], departure: datetime
+    ) -> list[WaypointForecast]:
+        """Each town's departure-window summary. Inclusive hour stamps:
+        WINDOW_HOURS hours starting at the departure hour (departure plus five
+        more when WINDOW_HOURS is 6).
 
         The per-town fetches are independent, so they run concurrently:
         serializing them stacks upstream latency per town — and when Open-Meteo
@@ -321,14 +280,14 @@ class ForecastService:
         )
 
     async def _forecast_for(
-        self, segment: Segment, start_hour: str, end_hour: str
-    ) -> SegmentForecast:
-        key = f"{segment.lat:.4f}:{segment.lon:.4f}:{start_hour}"
+        self, waypoint: Waypoint, start_hour: str, end_hour: str
+    ) -> WaypointForecast:
+        key = f"{waypoint.lat:.4f}:{waypoint.lon:.4f}:{start_hour}"
         samples = self._cache.get(key)
         if samples is None:
             try:
                 samples = await self._provider.get_hourly(
-                    segment.lat, segment.lon, start_hour, end_hour
+                    waypoint.lat, waypoint.lon, start_hour, end_hour
                 )
                 # Neither failures nor empty payloads are cached: a transient
                 # 200 with no usable hours must not pin the town to UNKNOWN
@@ -336,7 +295,7 @@ class ForecastService:
                 if samples:
                     self._cache.set(key, samples)
             except Exception as exc:  # noqa: BLE001 - degrade one town, not the journey
-                log.warning("open-meteo fetch failed for %s: %s", segment.id, exc)
+                log.warning("open-meteo fetch failed for %s: %s", waypoint.id, exc)
                 samples = []
 
         temps_f = [
@@ -349,8 +308,8 @@ class ForecastService:
             (s.weather_code for s, r in zip(samples, regimes) if r == worst), None
         )
 
-        return SegmentForecast(
-            segment=segment,
+        return WaypointForecast(
+            waypoint=waypoint,
             regime=worst,
             temperature_high_f=_round1(_max(temps_f)),
             temperature_low_f=_round1(_min(temps_f)),

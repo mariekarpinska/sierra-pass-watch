@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getTowns } from '../api/towns'
 import { isAppError } from '../api/client'
-import type { Segment } from '../api/types'
+import type { Waypoint } from '../api/types'
 
 export interface Plan {
   fromId: string
@@ -21,7 +21,7 @@ function toLocalInput(d: Date): string {
 }
 
 export function Planner({ onPlan }: Props) {
-  const [towns, setTowns] = useState<Segment[]>([])
+  const [towns, setTowns] = useState<Waypoint[]>([])
   const [fromId, setFromId] = useState('')
   const [toId, setToId] = useState('')
   const [departure, setDeparture] = useState(() => toLocalInput(new Date()))

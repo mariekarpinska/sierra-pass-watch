@@ -4,7 +4,7 @@ import { App } from "./App";
 import * as healthApi from "./api/health";
 import * as townsApi from "./api/towns";
 import * as journeyApi from "./api/journey";
-import type { JourneyResponse, Segment } from "./api/types";
+import type { JourneyResponse, Waypoint } from "./api/types";
 
 vi.mock("./api/health", { spy: true });
 vi.mock("./api/towns", { spy: true });
@@ -43,10 +43,10 @@ describe("App - backend health round-trip", () => {
   });
 });
 
-const TOWNS: Segment[] = [
-  { id: "colfax", routeId: "", name: "Colfax", lat: 39.1002, lon: -120.9533 },
-  { id: "truckee", routeId: "", name: "Truckee", lat: 39.328, lon: -120.1833 },
-  { id: "south-lake-tahoe", routeId: "", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
+const TOWNS: Waypoint[] = [
+  { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533 },
+  { id: "truckee", name: "Truckee", lat: 39.328, lon: -120.1833 },
+  { id: "south-lake-tahoe", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
 ];
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",
@@ -61,7 +61,7 @@ const JOURNEY: JourneyResponse = {
   totalMinutes: 130,
   stops: [
     {
-      segment: TOWNS[0],
+      waypoint: TOWNS[0],
       regime: "SNOW",
       temperatureHighF: 28.4,
       temperatureLowF: 27.5,

@@ -22,8 +22,6 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     # Typed settings from the environment (config.py).
     "pydantic-settings>=2.5",
-    # Async Postgres access + a connection pool (db.py, segments.py).
-    "psycopg[binary,pool]>=3.2",
     # Outbound HTTP to Open-Meteo (weather.py) and, via TestClient, the test
     # transport.
     "httpx>=0.28",
@@ -37,10 +35,6 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
-    # anyio backend for the async repository test.
-    "pytest-asyncio>=0.24",
-    # A real Postgres for the repository integration test.
-    "testcontainers[postgres]>=4.8",
 ]
 
 [tool.setuptools.packages.find]
@@ -48,14 +42,6 @@ include = ["api*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Async repository tests await directly; auto mode runs them without a marker.
-asyncio_mode = "auto"
-# The Testcontainers Postgres test is opt-in so the default run stays offline
-# and fast. CI runs it as a separate step. Enable with:  pytest -m integration
-addopts = "-m 'not integration'"
-markers = [
-    "integration: exercises a real Postgres (Docker via Testcontainers); skipped when unavailable",
-]
 
 [tool.coverage.run]
 source = ["api"]

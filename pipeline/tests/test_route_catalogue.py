@@ -1,7 +1,8 @@
-"""shared/route-catalogue.json is a copy of pipeline.routes.ROUTES, served by
-the API as GET /api/routes. Like the dbt seeds (test_warehouse_seeds.py), it
-must not drift from the code it was exported from, so this asserts the two are
-identical and a reviewer never has to trust that someone re-ran the export.
+"""shared/route-catalogue.json is a copy of pipeline.routes.ROUTES, loaded by
+the API at startup (the journey endpoint reads each highway's name and seasonal
+note from it). Like the dbt seeds (test_warehouse_seeds.py), it must not drift
+from the code it was exported from, so this asserts the two are identical and a
+reviewer never has to trust that someone re-ran the export.
 """
 from __future__ import annotations
 

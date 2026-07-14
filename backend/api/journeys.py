@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import Request
 from pydantic import BaseModel
 
-from api.schemas import Segment
+from api.schemas import Waypoint
 
 
 class TownPoint(BaseModel):
@@ -37,10 +37,10 @@ class JourneyEntry(BaseModel):
 
 class ResolvedJourney(BaseModel):
     """A journey resolved for a specific direction: the ordered stops as
-    contract segments (route-independent, so route_id is blank), the highways
-    travelled in order, plus totals."""
+    route-independent waypoints (a journey crosses highways, so no single route
+    owns them), the highways travelled in order, plus totals."""
 
-    stops: list[Segment]
+    stops: list[Waypoint]
     via: list[str]
     miles: float
     minutes: int
@@ -74,7 +74,7 @@ class JourneyIndex(BaseModel):
         slugs = entry.towns if forward else list(reversed(entry.towns))
         via = entry.routes if forward else list(reversed(entry.routes))
         stops = [
-            Segment(id=slug, route_id="", name=town.name, lat=town.lat, lon=town.lon)
+            Waypoint(id=slug, name=town.name, lat=town.lat, lon=town.lon)
             for slug in slugs
             if (town := self.towns.get(slug)) is not None
         ]

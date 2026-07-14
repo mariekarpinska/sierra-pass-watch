@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import golden from "../../../shared/weather-regime-cases.json";
 import { REGIME_CODES } from "./types";
-import type { JourneyResponse, Segment } from "./types";
+import type { JourneyResponse, Waypoint } from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
 // control. This line runs before the imports below, so the fetchers pick up the
@@ -18,9 +18,9 @@ import { getTowns } from "./towns";
 import { getJourney } from "./journey";
 
 // Sample responses the fake will return, in the same shape the real API sends.
-const TOWNS: Segment[] = [
-  { id: "colfax", routeId: "", name: "Colfax", lat: 39.1002, lon: -120.9533 },
-  { id: "south-lake-tahoe", routeId: "", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
+const TOWNS: Waypoint[] = [
+  { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533 },
+  { id: "south-lake-tahoe", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
 ];
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",
@@ -32,7 +32,7 @@ const JOURNEY: JourneyResponse = {
   totalMinutes: 130,
   stops: [
     {
-      segment: TOWNS[0],
+      waypoint: TOWNS[0],
       regime: "SNOW",
       temperatureHighF: 28.4,
       temperatureLowF: 27.5,
@@ -72,7 +72,7 @@ describe("getJourney", () => {
     expect(mockGet).toHaveBeenCalledWith("/api/journey", {
       params: { from: "colfax", to: "south-lake-tahoe", departure },
     });
-    expect(journey.stops[0].segment.name).toBe("Colfax");
+    expect(journey.stops[0].waypoint.name).toBe("Colfax");
     expect(journey.totalMiles).toBe(94.2);
   });
 });

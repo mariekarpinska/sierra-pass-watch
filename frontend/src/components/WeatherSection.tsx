@@ -1,5 +1,5 @@
 import type { JourneyResponse } from '../api/types'
-import { toSegmentCard } from '../lib/forecastAdapter'
+import { toWaypointCard } from '../lib/forecastAdapter'
 import { WeatherIcon } from './WeatherIcon'
 import { useReveal } from '../lib/useReveal'
 
@@ -34,7 +34,7 @@ const num = (value: number | null): string => (value === null ? '-' : String(val
 
 export function WeatherSection({ journey }: Props) {
   const sectionRef = useReveal<HTMLElement>(journey)
-  const cards = journey.stops.map(toSegmentCard)
+  const cards = journey.stops.map(toWaypointCard)
   const via = journey.via.map((leg) => leg.id).join(' → ')
   const seasonalLegs = journey.via.filter((leg) => leg.seasonal)
 

@@ -1,12 +1,12 @@
 /**
  * The towns the journey picker offers (GET /api/towns), served from the
- * in-memory journey index so it needs no database. Route-independent points:
- * `routeId` is blank.
+ * in-memory journey index so it needs no database. Route-independent points, so
+ * they are plain Waypoints (no routeId): a journey crosses highways.
  */
 import { api } from "./client";
-import type { Segment } from "./types";
+import type { Waypoint } from "./types";
 
-export async function getTowns(): Promise<Segment[]> {
-  const response = await api.get<Segment[]>("/api/towns");
+export async function getTowns(): Promise<Waypoint[]> {
+  const response = await api.get<Waypoint[]>("/api/towns");
   return response.data;
 }

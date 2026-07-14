@@ -49,32 +49,30 @@ class Route(CamelModel):
     towns: list[Town]
 
 
-class Segment(CamelModel):
-    """An anchor waypoint: a town/pass where weather is sampled.
+class Waypoint(CamelModel):
+    """A point where weather is sampled: a town or pass, with its coordinates.
 
-    Two id forms share this shape. /api/segments serves route-scoped anchors:
-    id is "{routeId}:{town-slug}" (e.g. "I-80:donner-summit") with a real
-    route_id. /api/towns and journey stops are route-independent: id is the
-    bare town slug (e.g. "donner-summit") and route_id is blank, because a
-    journey crosses highways. Joining a journey stop to per-route data means
-    matching on the slug half of the segment id. Crashes are located by
-    per-mile bin (ADR-0007); the anchor is only the weather point."""
+    This is all a forecast needs — every WaypointForecast wraps a Waypoint. The
+    id is the bare town slug (e.g. "donner-summit"), route-independent on
+    purpose: a journey crosses highways, so no single route owns a stop. The
+    crash-history branches work at a different grain entirely — per-mile bins
+    along a route (ADR-0007) — and will bring their own route-scoped contract;
+    the waypoint is only the weather point."""
 
     id: str
-    route_id: str
     name: str
     lat: float
     lon: float
 
 
-class SegmentForecast(CamelModel):
+class WaypointForecast(CamelModel):
     """Forecast for one town over the departure window (a fixed number of hours
     from the driver's start time). The values summarize that window: the worst
     regime, the temperature range, and the roughest wind/visibility/precip an
     hour in the window reaches, so the card can show conditions for the drive
     rather than for one instant. Any field is null when no hour supplied it."""
 
-    segment: Segment
+    waypoint: Waypoint
     regime: str
     temperature_high_f: float | None
     temperature_low_f: float | None
@@ -82,17 +80,6 @@ class SegmentForecast(CamelModel):
     visibility_miles: float | None
     precip_probability_pct: int | None
     short_forecast: str | None
-
-
-class ForecastResponse(CamelModel):
-    """GET /api/forecast?route=&from=&to=&departure="""
-
-    route_id: str
-    from_segment_id: str
-    to_segment_id: str
-    departure_utc: str
-    generated_at_utc: str
-    segments: list[SegmentForecast]
 
 
 class JourneyLeg(CamelModel):
@@ -120,4 +107,4 @@ class JourneyResponse(CamelModel):
     generated_at_utc: str
     total_miles: float
     total_minutes: int
-    stops: list[SegmentForecast]
+    stops: list[WaypointForecast]

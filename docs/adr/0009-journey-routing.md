@@ -70,7 +70,13 @@ OSRM call, and no database touch happens at request time.
 - The public OSRM demo server is fine for this build-time, run-rarely use; a
   heavier cadence would self-host OSRM. Noted, not a runtime concern.
 - The frontend consumes only `/api/towns` and `/api/journey`; its single-route
-  fetchers were deleted with the planner rewrite. The backend keeps serving
-  `/api/routes`, `/api/segments` and `/api/forecast` deliberately — the
-  crash-history and hotspot branches read per-route, per-segment data
-  (ADR-0007), so those endpoints are their contract, not leftovers.
+  fetchers were deleted with the planner rewrite. `/api/routes`, `/api/segments`
+  and `/api/forecast` were first kept for the crash-history branches, then
+  removed (revising the earlier version of this note): those branches work at
+  the per-mile-bin grain and define their own endpoints over the crash marts
+  (ADR-0007), so nothing consumed the three — and with `/api/segments` went the
+  API's only database read, so the connection pool went with it. The pipeline
+  side (`analytics.segments`, the polylines and journey builders) is untouched;
+  it feeds the marts the crash endpoints will read. The API serves exactly what
+  the UI consumes, and each future feature brings back what it needs when it
+  lands.

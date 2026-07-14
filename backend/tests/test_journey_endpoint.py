@@ -7,8 +7,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from api.catalog import RouteCatalog
-from api.config import Settings
 from api.main import create_app
 from api.weather import ForecastService, HourlySample, get_forecast_service
 
@@ -39,9 +37,7 @@ class ClearProvider:
 @pytest.fixture()
 def client():
     app = create_app()
-    service = ForecastService(
-        catalog=RouteCatalog.load(Settings().shared_dir), provider=ClearProvider()
-    )
+    service = ForecastService(provider=ClearProvider())
     app.dependency_overrides[get_forecast_service] = lambda: service
     with TestClient(app) as test_client:
         yield test_client
@@ -100,7 +96,7 @@ def test_crossing_threads_the_expected_towns_in_order(client) -> None:
         client, departure=DEPARTURE, **{"from": "colfax", "to": "south-lake-tahoe"}
     ).json()
 
-    ids = [s["segment"]["id"] for s in journey["stops"]]
+    ids = [s["waypoint"]["id"] for s in journey["stops"]]
     # A real I-80 -> SR-89 -> US-50 crossing: the origin leads, and both the
     # destination and Truckee are threaded along the way. (The destination is
     # not always dead last: a town right at it, like Stateline by South Lake
@@ -128,8 +124,8 @@ def test_reversed_journey_reverses_the_span(client) -> None:
         client, departure=DEPARTURE, **{"from": "south-lake-tahoe", "to": "colfax"}
     ).json()
 
-    forward_ids = [s["segment"]["id"] for s in forward["stops"]]
-    back_ids = [s["segment"]["id"] for s in back["stops"]]
+    forward_ids = [s["waypoint"]["id"] for s in forward["stops"]]
+    back_ids = [s["waypoint"]["id"] for s in back["stops"]]
     assert back_ids == list(reversed(forward_ids))
     # The highways flip with the stops.
     forward_via = [leg["id"] for leg in forward["via"]]
