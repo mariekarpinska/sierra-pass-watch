@@ -30,13 +30,16 @@ export const REGIME_CODES = [
 export type RegimeCode = (typeof REGIME_CODES)[number];
 
 /**
- * An anchor waypoint (GET /api/segments): a town where weather is sampled.
- * Crashes are located by per-mile bin (ADR-0007); the anchor is only the
- * weather point.
+ * An anchor waypoint: a town where weather is sampled. Two id forms share
+ * this shape: /api/segments serves route-scoped anchors ("I-80:donner-summit"
+ * with a real routeId), while /api/towns and journey stops are
+ * route-independent (a bare town slug like "donner-summit", routeId blank,
+ * because a journey crosses highways).
  */
 export interface Segment {
-  /** "{routeId}:{town-slug}", e.g. "I-80:donner-summit". */
+  /** "{routeId}:{town-slug}" from /api/segments; a bare town slug elsewhere. */
   id: string;
+  /** The owning route, or "" for route-independent town/journey points. */
   routeId: string;
   /** Human name, e.g. "Donner Summit". */
   name: string;

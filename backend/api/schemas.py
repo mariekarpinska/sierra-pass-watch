@@ -50,8 +50,14 @@ class Route(CamelModel):
 
 
 class Segment(CamelModel):
-    """An anchor waypoint: a town/pass where weather is sampled. Ids are
-    "{routeId}:{town-slug}", e.g. "I-80:donner-summit". Crashes are located by
+    """An anchor waypoint: a town/pass where weather is sampled.
+
+    Two id forms share this shape. /api/segments serves route-scoped anchors:
+    id is "{routeId}:{town-slug}" (e.g. "I-80:donner-summit") with a real
+    route_id. /api/towns and journey stops are route-independent: id is the
+    bare town slug (e.g. "donner-summit") and route_id is blank, because a
+    journey crosses highways. Joining a journey stop to per-route data means
+    matching on the slug half of the segment id. Crashes are located by
     per-mile bin (ADR-0007); the anchor is only the weather point."""
 
     id: str
