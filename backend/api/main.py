@@ -26,7 +26,14 @@ from api.config import Settings
 from api.db import create_pool
 from api.journeys import JourneyIndex, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
-from api.schemas import ForecastResponse, Health, JourneyResponse, Route, Segment
+from api.schemas import (
+    ForecastResponse,
+    Health,
+    JourneyLeg,
+    JourneyResponse,
+    Route,
+    Segment,
+)
 from api.segments import SegmentRepository, get_segment_repository
 from api.weather import (
     ForecastService,
@@ -171,6 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         departure: str | None = None,
         service: ForecastService = Depends(get_forecast_service),
         index: JourneyIndex = Depends(get_journey_index),
+        catalog: RouteCatalog = Depends(get_catalog),
     ):
         if not from_ or not to or not departure:
             return JSONResponse(
@@ -188,9 +196,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=404, content={"error": "unknown town or journey"}
             )
         stops = await service.forecast_towns(resolved.stops, departure_at)
+        # The highways travelled, with the catalogue's seasonal context, so
+        # the UI can name the roads and warn about passes that close.
+        routes_by_id = {route.id: route for route in catalog.routes}
+        via = [
+            JourneyLeg(id=r.id, name=r.name, seasonal=r.seasonal, note=r.note)
+            for road in resolved.via
+            if (r := routes_by_id.get(road)) is not None
+        ]
         return JourneyResponse(
             from_id=from_,
             to_id=to,
+            via=via,
             departure_utc=departure_at.isoformat(),
             generated_at_utc=datetime.now(timezone.utc).isoformat(),
             total_miles=resolved.miles,

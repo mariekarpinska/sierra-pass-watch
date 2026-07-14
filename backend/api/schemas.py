@@ -89,15 +89,27 @@ class ForecastResponse(CamelModel):
     segments: list[SegmentForecast]
 
 
+class JourneyLeg(CamelModel):
+    """One highway of a journey, with the catalogue's seasonal context so the
+    UI can warn when a trip crosses a pass that closes for the winter."""
+
+    id: str
+    name: str
+    seasonal: bool
+    note: str
+
+
 class JourneyResponse(CamelModel):
     """GET /api/journey?from=&to=&departure=
 
     A multi-highway trip: the anchor towns along the drive (OSRM-routed at build
-    time), each with the same departure-window summary as a single-route stop.
+    time), each with the same departure-window summary as a single-route stop,
+    plus the highways travelled (`via`), in order.
     """
 
     from_id: str
     to_id: str
+    via: list[JourneyLeg]
     departure_utc: str
     generated_at_utc: str
     total_miles: float

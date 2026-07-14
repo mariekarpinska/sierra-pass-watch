@@ -97,13 +97,30 @@ export interface ForecastResponse {
 }
 
 /**
+ * One highway of a journey, with the catalogue's seasonal context so the UI
+ * can warn when the trip crosses a pass that closes for the winter.
+ */
+export interface JourneyLeg {
+  /** Route id, e.g. "SR-120". */
+  id: string;
+  /** Crossing / corridor name, e.g. "Tioga Pass". */
+  name: string;
+  /** True if the pass closes seasonally. */
+  seasonal: boolean;
+  /** Short context, e.g. "closed ~Nov-May". */
+  note: string;
+}
+
+/**
  * GET /api/journey?from=&to=&departure= (may cross several highways).
  * The anchor towns along the OSRM-routed drive, each with the same
- * departure-window summary as a single-route stop.
+ * departure-window summary as a single-route stop, plus the highways
+ * travelled (`via`), in order.
  */
 export interface JourneyResponse {
   fromId: string;
   toId: string;
+  via: JourneyLeg[];
   departureUtc: string;
   generatedAtUtc: string;
   totalMiles: number;

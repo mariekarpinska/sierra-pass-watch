@@ -98,6 +98,10 @@ def test_crossing_threads_the_expected_towns_in_order(client) -> None:
     assert "south-lake-tahoe" in ids
     assert "truckee" in ids
     assert journey["totalMiles"] > 0 and journey["totalMinutes"] > 0
+    # The highways travelled, in order, with the catalogue's seasonal context
+    # (the UI names the roads and warns when a leg is a seasonal pass).
+    assert [leg["id"] for leg in journey["via"]] == ["I-80", "SR-89", "US-50"]
+    assert all("seasonal" in leg and "name" in leg for leg in journey["via"])
     # Each stop carries the per-town window summary. Assert the values, not
     # just the keys: a broken provider fake degrades every town to UNKNOWN
     # with null fields, which mere key-presence checks would wave through.
@@ -116,3 +120,7 @@ def test_reversed_journey_reverses_the_span(client) -> None:
     forward_ids = [s["segment"]["id"] for s in forward["stops"]]
     back_ids = [s["segment"]["id"] for s in back["stops"]]
     assert back_ids == list(reversed(forward_ids))
+    # The highways flip with the stops.
+    forward_via = [leg["id"] for leg in forward["via"]]
+    back_via = [leg["id"] for leg in back["via"]]
+    assert back_via == list(reversed(forward_via))

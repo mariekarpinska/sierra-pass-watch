@@ -12,7 +12,8 @@ import itertools
 import json
 from pathlib import Path
 
-from pipeline.build_journeys import towns_along, unique_towns
+from pipeline.build_journeys import routes_for, towns_along, unique_towns
+from pipeline.routes import ROUTES
 
 REPO = Path(__file__).parents[2]
 
@@ -37,6 +38,14 @@ class TestSelection:
     def test_reversed_line_reverses_the_order(self) -> None:
         assert towns_along(list(reversed(LINE)), TOWNS) == ["east", "mid", "west"]
 
+    def test_routes_for_names_the_highways_in_travel_order(self) -> None:
+        # The classic crossing: I-80 to Truckee, SR-89 down the west shore,
+        # US-50 into South Lake Tahoe. Tahoe City sits on two roads (SR-28 and
+        # SR-89); the closest-approach tie-break must pick the one that heads
+        # toward the next stop.
+        stops = ["colfax", "donner-summit", "truckee", "tahoe-city", "south-lake-tahoe"]
+        assert routes_for(stops, unique_towns()) == ["I-80", "SR-89", "US-50"]
+
 
 class TestCommittedFile:
     data = json.loads((REPO / "shared" / "route-journeys.json").read_text(encoding="utf-8"))
@@ -59,3 +68,9 @@ class TestCommittedFile:
             assert {stops[0], stops[-1]} == {lo, hi}
             assert len(stops) == len(set(stops))  # no town listed twice
             assert entry["miles"] > 0 and entry["minutes"] > 0
+
+    def test_each_journey_names_the_roads_it_travels(self) -> None:
+        known = {route["id"] for route in ROUTES}
+        for entry in self.data["journeys"].values():
+            assert entry["routes"], "every journey travels at least one road"
+            assert set(entry["routes"]) <= known

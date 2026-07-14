@@ -51,6 +51,10 @@ const TOWNS: Segment[] = [
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",
   toId: "south-lake-tahoe",
+  via: [
+    { id: "I-80", name: "Donner Pass", seasonal: false, note: "Only freeway across the range" },
+    { id: "US-50", name: "Echo Summit", seasonal: false, note: "Main South Tahoe approach" },
+  ],
   departureUtc: "2026-01-12T15:00:00+00:00",
   generatedAtUtc: "2026-01-12T15:02:00+00:00",
   totalMiles: 94.2,

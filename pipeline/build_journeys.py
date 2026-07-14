@@ -55,6 +55,68 @@ def unique_towns() -> dict[str, dict]:
     return towns
 
 
+def _roads_of(slug: str) -> set[str]:
+    """Every catalogue route this town sits on (junction towns sit on two)."""
+    return {
+        route["id"]
+        for route in ROUTES
+        if any(town_slug(name) == slug for name, _, _ in route["towns"])
+    }
+
+
+POLYLINES_FILE = Path(__file__).parents[1] / "shared" / "route-polylines.json"
+
+_geometries: dict[str, list[list[float]]] | None = None
+
+
+def _route_geometry(road: str) -> list[list[float]]:
+    """The road's committed polyline (built by build_polylines.py), loaded once."""
+    global _geometries
+    if _geometries is None:
+        payload = json.loads(POLYLINES_FILE.read_text(encoding="utf-8"))
+        _geometries = {rid: entry["coordinates"] for rid, entry in payload["routes"].items()}
+    return _geometries.get(road, [])
+
+
+def _closest_approach(road: str, lat: float, lon: float) -> float:
+    """How near (squared degrees; comparison only) this road's geometry gets to
+    a point. Geometry rather than town lists on purpose: SR-89 and SR-28 both
+    contain Tahoe City, and across the lake Kings Beach is straight-line closer
+    to South Lake Tahoe than Markleeville - but only SR-89's line actually runs
+    down toward it."""
+    geometry = _route_geometry(road)[::5]  # every 5th point is plenty
+    if not geometry:
+        return float("inf")
+    return min((p_lat - lat) ** 2 + (p_lon - lon) ** 2 for p_lon, p_lat in geometry)
+
+
+def routes_for(slugs: list[str], towns: dict[str, dict]) -> list[str]:
+    """The highways a journey travels, in stop order - ["I-80", "SR-89",
+    "US-50"] for Colfax to South Lake Tahoe. Derived from route membership:
+    stay on the current road until a stop is not on it; when switching, prefer
+    a road shared with the next stop, and if none is (a junction town like
+    Tahoe City sits on two roads and the next stop is on neither), take the
+    road whose committed polyline gets closest to the next stop. A heuristic,
+    but it names the passes a trip crosses, which is what the seasonal warning
+    needs."""
+    slug_roads = [_roads_of(slug) for slug in slugs]
+    via: list[str] = []
+    for i, roads in enumerate(slug_roads):
+        if via and via[-1] in roads:
+            continue
+        upcoming = slug_roads[i + 1] if i + 1 < len(slug_roads) else roads
+        if roads & upcoming:
+            via.append(min(roads & upcoming))
+            continue
+        target = towns[slugs[min(i + 1, len(slugs) - 1)]]
+        via.append(
+            # The road id breaks exact ties, so the result never depends on
+            # set iteration order.
+            min(roads, key=lambda road: (_closest_approach(road, target["lat"], target["lon"]), road))
+        )
+    return via
+
+
 def fetch_route(a: dict, b: dict) -> dict:
     """OSRM driving route between two towns: geometry, distance, duration."""
     coords = f"{a['lon']},{a['lat']};{b['lon']},{b['lat']}"
@@ -108,6 +170,7 @@ def build(output: Path = OUTPUT_FILE) -> dict:
         ordered = ordered[first : last + 1]
         journeys[f"{slug_a}|{slug_b}"] = {
             "towns": ordered,
+            "routes": routes_for(ordered, towns),
             "miles": round(route["miles"], 1),
             "minutes": round(route["minutes"]),
         }
@@ -120,8 +183,9 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "Multi-highway journeys between catalogue towns, built by "
             "python -m pipeline.build_journeys from OSRM driving routes. For each "
             "town pair, the catalogue's weather anchors that fall along the drive, "
-            "in travel order. Committed so nothing depends on OSRM at build/run "
-            "time; re-run only when the catalogue's towns change."
+            "in travel order, plus the highways it follows. Committed so nothing "
+            "depends on OSRM at build/run time; re-run only when the catalogue's "
+            "towns change."
         ),
         "towns": towns,
         "journeys": journeys,

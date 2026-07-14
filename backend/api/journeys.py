@@ -26,18 +26,22 @@ class TownPoint(BaseModel):
 
 
 class JourneyEntry(BaseModel):
-    """The anchors along one drive, ordered from the lexically-smaller town id."""
+    """The anchors along one drive, ordered from the lexically-smaller town id,
+    plus the highways the drive follows (for the seasonal-pass warning)."""
 
     towns: list[str]
+    routes: list[str]
     miles: float
     minutes: int
 
 
 class ResolvedJourney(BaseModel):
     """A journey resolved for a specific direction: the ordered stops as
-    contract segments (route-independent, so route_id is blank), plus totals."""
+    contract segments (route-independent, so route_id is blank), the highways
+    travelled in order, plus totals."""
 
     stops: list[Segment]
+    via: list[str]
     miles: float
     minutes: int
 
@@ -62,13 +66,15 @@ class JourneyIndex(BaseModel):
         if entry is None:
             return None
         # Stored order runs from the smaller id; flip it when the trip does.
-        slugs = entry.towns if from_id == lo else list(reversed(entry.towns))
+        forward = from_id == lo
+        slugs = entry.towns if forward else list(reversed(entry.towns))
+        via = entry.routes if forward else list(reversed(entry.routes))
         stops = [
             Segment(id=slug, route_id="", name=town.name, lat=town.lat, lon=town.lon)
             for slug in slugs
             if (town := self.towns.get(slug)) is not None
         ]
-        return ResolvedJourney(stops=stops, miles=entry.miles, minutes=entry.minutes)
+        return ResolvedJourney(stops=stops, via=via, miles=entry.miles, minutes=entry.minutes)
 
 
 def get_journey_index(request: Request) -> JourneyIndex:

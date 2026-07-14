@@ -35,6 +35,8 @@ const num = (value: number | null): string => (value === null ? '-' : String(val
 export function WeatherSection({ journey }: Props) {
   const sectionRef = useReveal<HTMLElement>(journey)
   const cards = journey.stops.map(toSegmentCard)
+  const via = journey.via.map((leg) => leg.id).join(' → ')
+  const seasonalLegs = journey.via.filter((leg) => leg.seasonal)
 
   return (
     <section className="weather" ref={sectionRef}>
@@ -42,11 +44,20 @@ export function WeatherSection({ journey }: Props) {
         <span className="kicker">Conditions along the way</span>
         <h2>Forecast along your route</h2>
         <p className="sub">
-          About {Math.round(journey.totalMiles)} mi, {driveLabel(journey.totalMinutes)}. Conditions
-          for the six hours from your departure ({departureLabel(journey.departureUtc)}), broken out
-          by location so you can see where the drive changes character. Note: conditions in the
-          Sierra shift in an instant. Always check official sources and use your own judgement.
+          About {Math.round(journey.totalMiles)} mi, {driveLabel(journey.totalMinutes)}
+          {via && <> via {via}</>}. Conditions for the six hours from your departure (
+          {departureLabel(journey.departureUtc)}), broken out by location so you can see where the
+          drive changes character. Note: conditions in the Sierra shift in an instant. Always check
+          official sources and use your own judgement.
         </p>
+        {seasonalLegs.map((leg) => (
+          <p className="sub" key={leg.id} role="alert">
+            <strong>
+              {leg.name} ({leg.id}) is a seasonal pass
+            </strong>{' '}
+            — {leg.note}. Check Caltrans road conditions before you go.
+          </p>
+        ))}
       </div>
       <div className="weather-grid">
         {cards.map((c, pos) => {
