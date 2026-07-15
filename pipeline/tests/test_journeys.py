@@ -130,6 +130,15 @@ class TestCommittedFile:
             assert entry["routes"], "every journey travels at least one road"
             assert set(entry["routes"]) <= known
 
+    def test_a_connector_highway_is_named_even_with_no_town_on_it(self) -> None:
+        # June Lake -> Mammoth Lakes drives ~16 mi of US-395, but neither town
+        # is in US-395's catalogue town list. The drive geometry must still put
+        # US-395 in the route list and give it a driven road line, or the map
+        # would show no line for a pair the picker offers.
+        entry = self.data["journeys"]["june-lake|mammoth-lakes"]
+        assert "US-395" in entry["routes"]
+        assert entry["driven"].get("US-395"), "the US-395 miles must be drawable"
+
     def test_anchors_sit_on_travelled_roads_at_sane_miles(self) -> None:
         # Every anchor measure belongs to a road the journey names and a stop
         # the journey makes; a road may lack anchors (a spur with no

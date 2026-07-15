@@ -232,6 +232,80 @@ def driven_bins(
     return driven
 
 
+# Miles of a road the drive must cover for that road to count as travelled.
+# Enough to catch a connector highway the drive genuinely follows (US-395
+# carries ~20 mi of the June Lake -> Mammoth Lakes drive) while ignoring the
+# mile or two two highways share at an interchange.
+MIN_CONNECTOR_MILES = 5
+
+
+def _covered_miles(ranges: list[list[int]]) -> int:
+    """Whole-mile bins a road's driven ranges cover (bin lo..hi is hi-lo+1)."""
+    return sum(hi - lo + 1 for lo, hi in ranges)
+
+
+def travelled_roads(
+    coordinates: list[list[float]],
+    ordered: list[str],
+    towns: dict[str, dict],
+    geometry_for=None,
+) -> list[str]:
+    """The highways a journey travels, in travel order.
+
+    Starts from the town-membership roads (routes_for), then adds any catalogue
+    road with a polyline that the drive actually runs along for at least
+    MIN_CONNECTOR_MILES. routes_for names roads only from the towns' catalogue
+    membership, so a connector highway no trip town is listed on is missed -
+    US-395 carries the June Lake -> Mammoth Lakes drive, but neither town is in
+    its town list. Without this the highway's miles are dropped and the
+    route-overview map has no line to draw for that pair.
+
+    ``geometry_for`` is the polyline lookup, replaceable in tests.
+    """
+    if geometry_for is None:
+        geometry_for = _route_geometry
+    base = routes_for(ordered, towns)
+    cumulative = cumulative_miles(coordinates)
+    # Only weigh roads whose polyline passes near a stop - a cheap filter that
+    # skips the far-off highways the drive never approaches.
+    candidates = []
+    for road in dict.fromkeys(route["id"] for route in ROUTES):
+        geometry = geometry_for(road)
+        if road in base or len(geometry) < 2:
+            continue
+        road_cumulative = cumulative_miles(geometry)
+        near = any(
+            project_to_polyline(
+                towns[slug]["lat"], towns[slug]["lon"], geometry, road_cumulative
+            )[1]
+            <= ON_ROUTE_MILES
+            for slug in ordered
+        )
+        if near:
+            candidates.append(road)
+    covered = driven_bins(coordinates, candidates, geometry_for)
+    connectors = [
+        road
+        for road, ranges in covered.items()
+        if _covered_miles(ranges) >= MIN_CONNECTOR_MILES
+    ]
+    if not connectors:
+        return base
+
+    def drive_position(road: str) -> float:
+        """Drive-mile where the road is first met, so it sorts into travel order."""
+        geometry = geometry_for(road)
+        if road in covered:  # polylined and driven: where its stretch begins
+            lo = covered[road][0][0]
+            lat, lon = point_at_measure(geometry, cumulative_miles(geometry), lo + 0.5)
+        else:  # a spur with no polyline: its earliest trip town along the drive
+            slug = next((s for s in ordered if road in _roads_of(s)), ordered[0])
+            lat, lon = towns[slug]["lat"], towns[slug]["lon"]
+        return project_to_polyline(lat, lon, coordinates, cumulative)[0]
+
+    return sorted(dict.fromkeys(base + connectors), key=drive_position)
+
+
 def fetch_route(a: dict, b: dict) -> dict:
     """OSRM driving route between two towns: geometry, distance, duration."""
     coords = f"{a['lon']},{a['lat']};{b['lon']},{b['lat']}"
@@ -283,13 +357,13 @@ def build(output: Path = OUTPUT_FILE) -> dict:
         # route that ends at South Lake Tahoe) - the drive never reaches it.
         first, last = sorted((ordered.index(slug_a), ordered.index(slug_b)))
         ordered = ordered[first : last + 1]
-        via = routes_for(ordered, towns)
+        via = travelled_roads(route["coordinates"], ordered, towns)
         driven = driven_bins(route["coordinates"], via)
         if not driven:
-            # No road on this drive has a committed polyline (an all-spur
-            # journey), so the route-overview map can draw no line for it, only
-            # the stops. Legitimate but worth flagging at build time so the
-            # data problem is seen here, not as a blank map in the browser.
+            # Every road on this drive is a spur with no committed polyline, so
+            # the route-overview map can draw no line for it, only the stops.
+            # Rare; flagged at build time so the data case is seen here, not as
+            # a blank map in the browser.
             log.warning("journey has no drawable road line: %s->%s", slug_a, slug_b)
         journeys[f"{slug_a}|{slug_b}"] = {
             "towns": ordered,
