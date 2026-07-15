@@ -25,7 +25,10 @@ flowchart LR
   [warehouse.md](warehouse.md) for the mart lineage and grain.
 - **The backend** is a FastAPI app; response models translate snake_case Python
   to the camelCase wire contract in one base class
-  ([backend/api/schemas.py](../backend/api/schemas.py)).
+  ([backend/api/schemas.py](../backend/api/schemas.py)). Journeys and forecasts
+  are served from memory and Open-Meteo; crash history is the API's one
+  Postgres read, composed from the marts per journey
+  ([ADR-0010](adr/0010-crash-history-at-journey-grain.md)).
 - **The frontend** calls the backend exclusively through one axios instance with
   documented request/response interceptors
   ([frontend/src/api/client.ts](../frontend/src/api/client.ts)).

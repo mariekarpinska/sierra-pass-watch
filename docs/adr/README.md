@@ -18,3 +18,4 @@ Alternatives considered / Consequences**.
 | [0007](0007-spatial-model-per-mile-bins.md) | Spatial model: linear referencing + per-mile bins | Accepted |
 | [0008](0008-near-realtime-alerts.md) | Near real-time alerts: change events on a second stream | Accepted |
 | [0009](0009-journey-routing.md) | Multi-highway journeys: build-time OSRM precompute | Accepted |
+| [0010](0010-crash-history-at-journey-grain.md) | Crash history at journey grain: compose the marts per request | Accepted |

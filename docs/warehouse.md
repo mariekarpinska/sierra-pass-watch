@@ -55,6 +55,13 @@ flowchart LR
 | `mart_route_crashes` | one row per crash | the crash points the map plots | table |
 | `mart_active_alerts` | one row per recent alert | the near-real-time chain-control / incident feed | **view** |
 
+`GET /api/crash-patterns` reads three of these per request: bins from
+`mart_crash_patterns` (rank-1 cause joined from `mart_pattern_causes`) and
+journey-level top causes grouped over `mart_crash_conditions`. Why the API
+composes at request time instead of a journey-grain mart is
+[ADR-0010](adr/0010-crash-history-at-journey-grain.md). `mart_active_alerts`
+is consumed by the alerts branch; `mart_hotspots` has no consumer.
+
 ## Two spatial grains, on purpose (ADR-0007)
 
 Crashes carry their own lat/lon, so they get a fine position: the **per-mile
