@@ -98,6 +98,20 @@ class TestSegmentLegs:
             Leg("SR-207", None, None, "SNOW")
         ]
 
+    def test_sub_mile_anchors_are_absorbed_by_their_neighbours(self) -> None:
+        # Three anchors packed inside one mile collapse the middle anchor's
+        # window: both its midpoint cuts floor to the same bin, so it labels
+        # nothing and the neighbours split its miles. Deliberate at mile
+        # grain: coverage stays complete and no bin is counted twice.
+        anchors = {"SR-28": {"a": 10.2, "b": 10.5, "c": 10.9}}
+        regimes = {"a": "SNOW", "b": "ICE_FREEZING", "c": "CLEAR_DRY"}
+        driven = {"SR-28": [(8, 14)]}
+        legs = segment_legs(["SR-28"], driven, anchors, regimes, fallback="SNOW")
+        assert legs == [
+            Leg("SR-28", 8, 10, "SNOW"),
+            Leg("SR-28", 11, 14, "CLEAR_DRY"),
+        ]
+
     def test_unknown_stretches_are_dropped_not_guessed(self) -> None:
         gappy = {**FORECASTS, "donner-summit": "UNKNOWN"}
         legs = segment_legs(["I-80"], DRIVEN, ANCHORS, gappy, fallback="CLEAR_DRY")
