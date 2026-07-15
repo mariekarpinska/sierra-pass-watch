@@ -2,9 +2,8 @@
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
 field, and only what the UI consumes exists: /api/health, /api/towns,
-/api/journey. Later branches add crash-patterns, hotspots and the alerts feed,
-each bringing its own contract (and the database access it needs) when it
-lands.
+/api/journey, /api/crash-patterns. A later branch adds the alerts feed,
+bringing its own contract when it lands.
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -23,11 +22,25 @@ from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from pipeline.regime import REGIMES
+
 from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
+from api.crashes import (
+    CrashHistoryStore,
+    PostgresCrashHistoryStore,
+    build_crash_patterns,
+    get_crash_store,
+)
 from api.journeys import JourneyIndex, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
-from api.schemas import Health, JourneyLeg, JourneyResponse, Waypoint
+from api.schemas import (
+    CrashPatternsResponse,
+    Health,
+    JourneyLeg,
+    JourneyResponse,
+    Waypoint,
+)
 from api.weather import (
     ForecastService,
     OpenMeteoForecastProvider,
@@ -64,10 +77,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.forecast_service = ForecastService(
             provider=OpenMeteoForecastProvider(app.state.open_meteo_client),
         )
+        # Crash history is the one thing served from Postgres (the dbt marts).
+        # The store's pool opens on the first crash request, not here, so the
+        # app still starts (and every other endpoint works) with no database.
+        app.state.crash_store = PostgresCrashHistoryStore(settings)
         try:
             yield
         finally:
             await app.state.open_meteo_client.aclose()
+            app.state.crash_store.close()
 
     app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
 
@@ -163,6 +181,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total_minutes=resolved.minutes,
             stops=stops,
         )
+
+    # The crash record for a journey's highways under one weather regime:
+    # totals, occupied per-mile bins, top causes (from the dbt marts, composed
+    # per request - ADR-0010). `routes` is comma-separated catalogue ids, the
+    # journey's `via` legs. Missing/invalid params are a 400; a road the
+    # catalogue does not track is a 404, mirroring /api/journey's unknown town.
+    # Declared `def`, not `async def`: FastAPI then runs it on a worker thread,
+    # which is what lets the store block on the sync database driver without
+    # stalling the event loop (see crashes.py for why the driver is sync).
+    @app.get("/api/crash-patterns", response_model=CrashPatternsResponse)
+    def crash_patterns(
+        routes: str | None = None,
+        regime: str | None = None,
+        store: CrashHistoryStore = Depends(get_crash_store),
+        catalog: RouteCatalog = Depends(get_catalog),
+    ):
+        if not routes or not regime:
+            return JSONResponse(
+                status_code=400, content={"error": "routes and regime are required"}
+            )
+        if regime not in REGIMES:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"regime must be one of {', '.join(REGIMES)}"},
+            )
+        route_ids = [part.strip() for part in routes.split(",") if part.strip()]
+        known = {route.id for route in catalog.routes}
+        unknown = [route_id for route_id in route_ids if route_id not in known]
+        if not route_ids or unknown:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"unknown route: {', '.join(unknown) or routes}"},
+            )
+        bins = store.bins(route_ids, regime)
+        causes = store.causes(route_ids, regime)
+        return build_crash_patterns(route_ids, regime, bins, causes)
 
     return app
 

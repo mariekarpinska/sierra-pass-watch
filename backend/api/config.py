@@ -32,3 +32,37 @@ class Settings(BaseSettings):
     # Fixed upstream for the forecast slice (SECURITY.md: the only host the API
     # calls out to; never derived from request input).
     open_meteo_base_url: str = "https://api.open-meteo.com"
+
+    # --- Postgres, where the dbt-built crash marts live ---
+    # The same POSTGRES_* variables docker-compose, the pipeline and dbt read
+    # (.env.example), so one local setup serves the whole stack. A full
+    # DATABASE_URL, when set, wins over the parts (same rule as the pipeline).
+    database_url: str | None = None
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_user: str = "app"
+    postgres_password: str = "app_dev_password"
+    postgres_db: str = "app"
+
+    # Schema dbt writes marts to (warehouse/profiles.yml). Comes from settings,
+    # never from a request, so it is safe to splice into SQL as an identifier.
+    warehouse_schema: str = "analytics"
+
+    @property
+    def postgres_dsn(self) -> str:
+        """Connection string for psycopg, from DATABASE_URL or the parts.
+
+        connect_timeout matters: "localhost" resolves to both ::1 and
+        127.0.0.1, and Docker publishes Postgres on 127.0.0.1 only. Without a
+        timeout a stuck attempt on the dead address hangs the pool's worker
+        forever; with one it fails over to the address that answers. It must
+        stay well under the pool's 5-second acquire timeout (crashes.py), so
+        the failover finishes before the waiting request gives up.
+        """
+        if self.database_url:
+            return self.database_url
+        return (
+            f"host={self.postgres_host} port={self.postgres_port} "
+            f"user={self.postgres_user} password={self.postgres_password} "
+            f"dbname={self.postgres_db} connect_timeout=2"
+        )

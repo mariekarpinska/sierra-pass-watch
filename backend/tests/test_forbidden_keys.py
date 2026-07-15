@@ -8,6 +8,9 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from datetime import date
+
+from api.crashes import BinRow, CauseRow, get_crash_store
 from api.main import create_app
 from api.weather import ForecastService, HourlySample, get_forecast_service
 
@@ -49,11 +52,35 @@ class _OneClearHour:
         ]
 
 
+class _OnePopulatedBin:
+    """The database seam faked with one fully-populated bin and cause, so
+    /api/crash-patterns returns every contract field without Postgres."""
+
+    def bins(self, route_ids, regime):
+        return [
+            BinRow(
+                route_id="I-80",
+                mile_bin=12,
+                lat=39.31,
+                lon=-120.32,
+                crash_count=9,
+                fatal_count=1,
+                top_cause="Unsafe Speed",
+                first_crash_date=date(2017, 1, 3),
+                last_crash_date=date(2025, 12, 20),
+            )
+        ]
+
+    def causes(self, route_ids, regime):
+        return [CauseRow(cause="Unsafe Speed", crash_count=9)]
+
+
 @pytest.fixture()
 def client():
     app = create_app()
     service = ForecastService(provider=_OneClearHour())
     app.dependency_overrides[get_forecast_service] = lambda: service
+    app.dependency_overrides[get_crash_store] = lambda: _OnePopulatedBin()
     with TestClient(app) as test_client:
         yield test_client
 
@@ -64,6 +91,7 @@ def client():
         "/api/health",
         "/api/towns",
         "/api/journey?from=colfax&to=south-lake-tahoe&departure=2026-01-12T15:00:00Z",
+        "/api/crash-patterns?routes=I-80,US-50&regime=SNOW",
     ],
 )
 def test_no_response_carries_a_safety_judgement(client, path) -> None:

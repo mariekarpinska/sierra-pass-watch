@@ -25,6 +25,10 @@ dependencies = [
     # Outbound HTTP to Open-Meteo (weather.py) and, via TestClient, the test
     # transport.
     "httpx>=0.28",
+    # Postgres reads for the crash marts (crashes.py): the async driver plus
+    # its connection pool. Same driver family the pipeline writes with.
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
     # The regime classifier lives in the pipeline package, so ONE
     # implementation labels forecasts, live readings and crash history.
     # Monorepo-local: install the repo root first (`pip install -e ..`).
