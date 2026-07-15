@@ -1,5 +1,6 @@
 import L from 'leaflet'
 import type { CrashPatternsResponse, JourneyResponse } from '../api/types'
+import { densestBin } from '../lib/hotspot'
 import { regimeProse } from '../lib/regime'
 import { useReveal } from '../lib/useReveal'
 import { useLeafletMap } from '../lib/useLeafletMap'
@@ -28,24 +29,29 @@ export function CrashMapSection({ journey, data }: Props) {
     mapOptions: { scrollWheelZoom: false, center: [38.78, -120.4], zoom: 9 },
     deps: [data],
     draw: (layer, map) => {
+      // The drive's densest mile (same definition the insight caption uses,
+      // lib/hotspot.ts) gets the ochre treatment so it is findable here too.
+      const top = densestBin(data.bins)
       data.bins.forEach((bin) => {
         const n = bin.crashCount
+        const isTop = bin === top
         // Tuned by eye: dense corridors occupy most consecutive miles, so the
         // marks must stay small enough not to fuse into a band that hides the
         // route - a one-crash mark at radius 3.5, the cap at 10.75.
         const radius = 1 + Math.min(9.75, Math.sqrt(n) * 2.5)
-        // calm: muted sage, size = density. no red.
+        // calm: muted sage, size = density. no red. The densest mile alone
+        // borrows the caption's ochre.
         const marker = L.circleMarker([bin.lat, bin.lon], {
           radius,
-          color: '#C3D3A9',
-          weight: 1.5,
-          fillColor: '#9DB183',
+          color: isTop ? '#E0A94A' : '#C3D3A9',
+          weight: isTop ? 2.5 : 1.5,
+          fillColor: isTop ? '#E0A94A' : '#9DB183',
           fillOpacity: Math.min(0.55, 0.26 + n * 0.05),
-          opacity: 0.7,
+          opacity: isTop ? 0.95 : 0.7,
         })
         const years = `${bin.firstCrashDate.slice(0, 4)}–${bin.lastCrashDate.slice(0, 4)}`
         marker.bindPopup(
-          `<span class="pop-h">${n} crash${n > 1 ? 'es' : ''} in similar weather</span>
+          `<span class="pop-h">${n} crash${n > 1 ? 'es' : ''} in similar weather${isTop ? ' · densest on your drive' : ''}</span>
           <div class="pop-row"><span>Where</span><b>mile ${bin.mileBin} of ${bin.routeId}</b></div>
           <div class="pop-row"><span>Forecast here</span><b>${regimeProse(bin.regime)}</b></div>
           <div class="pop-row"><span>Most common</span><b>${bin.topCause ?? 'Unknown'}</b></div>
@@ -90,6 +96,7 @@ export function CrashMapSection({ journey, data }: Props) {
             <div className="scale-row"><i className="scale-dot s1"></i><em>a few</em></div>
             <div className="scale-row"><i className="scale-dot s2"></i><em>several</em></div>
             <div className="scale-row"><i className="scale-dot s3"></i><em>many</em></div>
+            <div className="scale-row"><i className="scale-dot s2 densest"></i><em>densest on your drive</em></div>
           </div>
         </aside>
       </div>

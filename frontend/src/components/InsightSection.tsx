@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CrashBin, CrashPatternsResponse, JourneyResponse } from '../api/types'
 import { haversine } from '../lib/data'
+import { densestBin, hotThreshold } from '../lib/hotspot'
+import { regimeProse } from '../lib/regime'
 import { useReveal } from '../lib/useReveal'
 
 const W = 800
@@ -41,8 +43,8 @@ interface Strip {
  */
 function buildStrips(journey: JourneyResponse, bins: CrashBin[]): { strips: Strip[]; top: CrashBin | null } {
   const maxCount = Math.max(...bins.map((b) => b.crashCount), 1)
-  const mean = bins.length ? bins.reduce((s, b) => s + b.crashCount, 0) / bins.length : 0
-  const isHot = (b: CrashBin) => b.crashCount >= Math.max(2, mean * 1.6)
+  const threshold = hotThreshold(bins)
+  const isHot = (b: CrashBin) => b.crashCount >= threshold
 
   const strips = journey.via.flatMap((leg) => {
     const routeBins = bins.filter((b) => b.routeId === leg.id)
@@ -69,9 +71,9 @@ function buildStrips(journey: JourneyResponse, bins: CrashBin[]): { strips: Stri
     }]
   })
 
-  // The densest accented bin anywhere on the drive, for the caption.
-  const hot = bins.filter(isHot).sort((a, b) => b.crashCount - a.crashCount)
-  return { strips, top: hot[0] ?? null }
+  // The densest accented bin anywhere on the drive, for the caption (and the
+  // same bin the map marks - one shared definition in lib/hotspot.ts).
+  return { strips, top: densestBin(bins) }
 }
 
 /** The stop nearest to a bin, to say "near Donner Summit" instead of a number. */
@@ -129,6 +131,11 @@ export function InsightSection({ journey, data }: Props) {
                   <line x1="0" y1={BASE_Y} x2={W} y2={BASE_Y} stroke="#E7DFC8" strokeWidth="1.5" opacity="0.5" />
                   {strip.dots.map((dot) => (
                     <g key={dot.bin.mileBin} opacity={dot.isHot ? 1 : 0.55}>
+                      {/* Native SVG tooltip: hovering a stem names its mile,
+                          since the axis alone cannot place a single dot. */}
+                      <title>
+                        {`Mile ${dot.bin.mileBin} of ${strip.routeId} — ${dot.bin.crashCount} crash${dot.bin.crashCount === 1 ? '' : 'es'} in ${regimeProse(dot.bin.regime)} weather, most often ${dot.bin.topCause ?? 'unknown'}`}
+                      </title>
                       <line
                         x1={dot.x} y1={dot.stemTop} x2={dot.x} y2={BASE_Y}
                         stroke={dot.isHot ? '#B87C24' : '#8E9AA6'} strokeWidth="1" strokeDasharray="2 3"

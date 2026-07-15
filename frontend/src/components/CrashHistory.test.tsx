@@ -145,6 +145,10 @@ describe("CrashHistory", () => {
     // The densest bin is called out with its nearest stop by name.
     expect(screen.getByText(/mile 12 of I-80/)).toBeInTheDocument();
     expect(screen.getByText(/near Donner Summit/)).toBeInTheDocument();
+    // Every stem carries a hover title naming its mile, count and cause.
+    expect(
+      screen.getByText(/Mile 12 of I-80 — 9 crashes in snow weather, most often Unsafe Speed/),
+    ).toBeInTheDocument();
     // Cause bars and the factual footer (count and fatality share, once).
     expect(screen.getByText("Unsafe Speed")).toBeInTheDocument();
     expect(screen.getByText(/based on 16 recorded crashes/i)).toBeInTheDocument();
