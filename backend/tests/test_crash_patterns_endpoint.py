@@ -274,20 +274,19 @@ def test_returns_the_record_in_camel_case(client, store) -> None:
     }
 
 
-def test_an_all_unknown_forecast_answers_empty_without_a_query(store) -> None:
+def test_an_all_unknown_forecast_is_a_503_not_a_quiet_road(store) -> None:
     unknown = dict.fromkeys(FORECASTS, "UNKNOWN")
     with make_client(store, regimes=unknown) as client:
-        body = client.get(
+        response = client.get(
             f"/api/crash-patterns?from=colfax&to=south-lake-tahoe&{DEPARTURE}"
-        ).json()
+        )
 
-    # No weather to match means no database read and an honestly empty record.
+    # No weather to match means no database read - and NOT an empty record,
+    # which the UI would present as a road with no history. A forecast outage
+    # is a service condition, so it answers as one.
     assert store.calls == []
-    assert body["crashCount"] == 0
-    assert body["pctFatal"] is None
-    assert body["smallSample"] is True
-    assert body["bins"] == []
-    assert body["topCauses"] == []
+    assert response.status_code == 503
+    assert "forecast" in response.json()["error"]
 
 
 def test_missing_params_are_a_400(client) -> None:

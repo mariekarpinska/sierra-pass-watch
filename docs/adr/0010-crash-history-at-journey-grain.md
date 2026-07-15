@@ -104,8 +104,9 @@ threadpool explicitly, keeping the sync driver off the event loop.
 - The crash record now depends on the forecast as well as the database: the
   endpoint samples the same fixed-host Open-Meteo client as `/api/journey`,
   whose request usually pre-warms the 5-minute cache. An upstream failure
-  degrades stops to UNKNOWN, which shrinks (or empties) the matched record
-  rather than erroring.
+  degrades stops to UNKNOWN, which shrinks the matched record; when nothing
+  at all can be matched the endpoint answers 503, so the UI reports an
+  outage instead of presenting an empty record as a quiet road.
 - The mock insight panel's elevation chart had no live data source (nothing in
   the stack measures elevation), so the live panel draws per-route crash
   density strips on the same mile axis instead.

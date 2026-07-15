@@ -243,9 +243,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         route_ids = list(dict.fromkeys(resolved.via))
         if not legs:
-            # Nothing but UNKNOWN forecasts: no weather to match, so the
-            # record is honestly empty rather than a guess.
-            return build_crash_patterns(route_ids, [], [])
+            # Nothing but UNKNOWN forecasts: there is no weather to match, and
+            # an empty record would read as "a quiet road" when the truth is
+            # "the forecast is unavailable". Say so: the client's error path
+            # already presents exactly that ("back when the service is").
+            return JSONResponse(
+                status_code=503,
+                content={"error": "no forecast to match the crash history against"},
+            )
         bins = await run_in_threadpool(store.bins, legs)
         causes = await run_in_threadpool(store.causes, legs)
         return build_crash_patterns(route_ids, bins, causes)
