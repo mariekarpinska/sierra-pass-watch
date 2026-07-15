@@ -284,11 +284,18 @@ def build(output: Path = OUTPUT_FILE) -> dict:
         first, last = sorted((ordered.index(slug_a), ordered.index(slug_b)))
         ordered = ordered[first : last + 1]
         via = routes_for(ordered, towns)
+        driven = driven_bins(route["coordinates"], via)
+        if not driven:
+            # No road on this drive has a committed polyline (an all-spur
+            # journey), so the route-overview map can draw no line for it, only
+            # the stops. Legitimate but worth flagging at build time so the
+            # data problem is seen here, not as a blank map in the browser.
+            log.warning("journey has no drawable road line: %s->%s", slug_a, slug_b)
         journeys[f"{slug_a}|{slug_b}"] = {
             "towns": ordered,
             "routes": via,
             "anchors": leg_anchor_miles(ordered, via, towns),
-            "driven": driven_bins(route["coordinates"], via),
+            "driven": driven,
             "miles": round(route["miles"], 1),
             "minutes": round(route["minutes"]),
         }
