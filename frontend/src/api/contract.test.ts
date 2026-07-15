@@ -5,7 +5,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import golden from "../../../shared/weather-regime-cases.json";
 import { REGIME_CODES } from "./types";
-import type { CrashPatternsResponse, JourneyResponse, Waypoint } from "./types";
+import type {
+  CrashPatternsResponse,
+  JourneyPathResponse,
+  JourneyResponse,
+  Waypoint,
+} from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
 // control. This line runs before the imports below, so the fetchers pick up the
@@ -17,6 +22,7 @@ import { api } from "./client";
 import { getTowns } from "./towns";
 import { getJourney } from "./journey";
 import { getCrashPatterns } from "./crashPatterns";
+import { getJourneyPath } from "./journeyPath";
 
 // Sample responses the fake will return, in the same shape the real API sends.
 const TOWNS: Waypoint[] = [
@@ -78,6 +84,15 @@ const CRASH_PATTERNS: CrashPatternsResponse = {
   topCauses: [{ cause: "Unsafe Speed", crashCount: 10, pct: 62 }],
 };
 
+const JOURNEY_PATH: JourneyPathResponse = {
+  paths: [
+    [
+      [39.1002, -120.9533],
+      [39.15, -120.85],
+    ],
+  ],
+};
+
 // A typed handle to the fake `get`, so we can set what it returns and check how
 // it was called.
 const mockGet = api.get as unknown as ReturnType<typeof vi.fn>;
@@ -123,6 +138,21 @@ describe("getCrashPatterns", () => {
     });
     expect(patterns.crashCount).toBe(16);
     expect(patterns.bins[0].mileBin).toBe(12);
+  });
+});
+
+describe("getJourneyPath", () => {
+  it("sends from and to as query params and returns the road-line paths", async () => {
+    mockGet.mockResolvedValue({ data: JOURNEY_PATH });
+
+    const result = await getJourneyPath("colfax", "truckee");
+
+    expect(mockGet).toHaveBeenCalledWith("/api/journey-path", {
+      params: { from: "colfax", to: "truckee" },
+    });
+    // Each path is an array of [lat, lon] pairs; coordinate order is exactly
+    // the kind of silent break a mocked test is here to pin.
+    expect(result.paths[0][0]).toEqual([39.1002, -120.9533]);
   });
 });
 
