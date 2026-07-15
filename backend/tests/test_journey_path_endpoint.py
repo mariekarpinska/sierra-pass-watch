@@ -11,6 +11,9 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from api.paths import driven_paths
+from api.weather import ForecastService, HourlySample, get_forecast_service
+
+DEPARTURE = "2026-01-12T15:00:00Z"
 
 # A straight east-west line at constant latitude, ~10.7 miles long, with a
 # vertex every ~2.7 miles (same shape the journey-builder tests use).
@@ -49,9 +52,32 @@ class TestDrivenPaths:
         assert driven_paths({"SPUR": [(0, 5)]}, lookup=fake_lookup) == []
 
 
+class _ClearProvider:
+    """One benign forecast hour, so /api/journey returns stops without a
+    network call. Only the elevation test needs the forecast; the path tests
+    ignore it."""
+
+    async def get_hourly(self, lat, lon, start_hour, end_hour):
+        return [
+            HourlySample(
+                time_utc="2026-01-12T15:00",
+                temperature_c=4.0,
+                surface_temp_c=4.0,
+                snowfall_rate_in_hr=0.0,
+                wind_gust_mph=8.0,
+                visibility_miles=9.0,
+                precip_probability_pct=10.0,
+                weather_code=1,
+            ),
+        ]
+
+
 @pytest.fixture()
 def client():
-    with TestClient(create_app()) as test_client:
+    app = create_app()
+    service = ForecastService(provider=_ClearProvider())
+    app.dependency_overrides[get_forecast_service] = lambda: service
+    with TestClient(app) as test_client:
         yield test_client
 
 
@@ -73,6 +99,13 @@ def test_missing_params_and_unknown_towns_mirror_the_journey_endpoint(client) ->
 
 
 def test_towns_and_journey_stops_carry_elevation(client) -> None:
+    # /api/towns builds its Waypoints one way; journey stops go through
+    # JourneyIndex.resolve. Assert both, so a refactor that drops elevation on
+    # either path (it defaults to None, so it would not error) is caught here.
     towns = client.get("/api/towns").json()
     colfax = next(t for t in towns if t["id"] == "colfax")
     assert colfax["elevationFt"] == 2421
+
+    journey = client.get(f"/api/journey?from=colfax&to=truckee&departure={DEPARTURE}").json()
+    colfax_stop = next(s for s in journey["stops"] if s["waypoint"]["id"] == "colfax")
+    assert colfax_stop["waypoint"]["elevationFt"] == 2421
