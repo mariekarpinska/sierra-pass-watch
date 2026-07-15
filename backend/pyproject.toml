@@ -39,6 +39,9 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    # Real-Postgres check for the store's SQL (same harness the pipeline's
+    # consumer idempotency test uses); skips itself when Docker is absent.
+    "testcontainers[postgres]>=4.8",
 ]
 
 [tool.setuptools.packages.find]
@@ -46,6 +49,9 @@ include = ["api*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: exercises real infrastructure (Docker via Testcontainers); skipped when unavailable",
+]
 
 [tool.coverage.run]
 source = ["api"]

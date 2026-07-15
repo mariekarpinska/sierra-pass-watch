@@ -164,7 +164,10 @@ class CrashHistoryStore(Protocol):
 # regime) table - one query however many legs, all values parameterized (no
 # SQL built per leg). A NULL lo means the leg has no bounds, so the whole
 # corridor matches. Legs on one road never overlap (segment_legs cuts at
-# whole bins), so no bin can be counted twice.
+# whole bins), so no bin can be counted twice. The ::int[] casts are
+# load-bearing: a journey whose every leg is whole-corridor binds all-NULL
+# lo/hi arrays, leaving the driver no element to infer a type from
+# (test_crash_store_integration pins this against real Postgres).
 _LEGS_JOIN = """
     join unnest(
             %(route_ids)s::text[], %(lo_bins)s::int[], %(hi_bins)s::int[],
