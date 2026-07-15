@@ -1,11 +1,11 @@
-// Tests for the typed API fetchers (getTowns, getJourney). They check that
-// each fetcher calls the right URL, passes the right params, and hands back
-// the data. There is no real backend here: we replace the axios client with a
-// fake, so nothing leaves the test process.
+// Tests for the typed API fetchers (getTowns, getJourney, getCrashPatterns).
+// They check that each fetcher calls the right URL, passes the right params,
+// and hands back the data. There is no real backend here: we replace the axios
+// client with a fake, so nothing leaves the test process.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import golden from "../../../shared/weather-regime-cases.json";
 import { REGIME_CODES } from "./types";
-import type { JourneyResponse, Waypoint } from "./types";
+import type { CrashPatternsResponse, JourneyResponse, Waypoint } from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
 // control. This line runs before the imports below, so the fetchers pick up the
@@ -16,6 +16,7 @@ vi.mock("./client", () => ({ api: { get: vi.fn() } }));
 import { api } from "./client";
 import { getTowns } from "./towns";
 import { getJourney } from "./journey";
+import { getCrashPatterns } from "./crashPatterns";
 
 // Sample responses the fake will return, in the same shape the real API sends.
 const TOWNS: Waypoint[] = [
@@ -42,6 +43,31 @@ const JOURNEY: JourneyResponse = {
       shortForecast: "Snow",
     },
   ],
+};
+
+const CRASH_PATTERNS: CrashPatternsResponse = {
+  regime: "SNOW",
+  routeIds: ["I-80", "US-50"],
+  crashCount: 16,
+  fatalCount: 1,
+  pctFatal: 6.2,
+  smallSample: false,
+  firstCrashDate: "2016-06-09",
+  lastCrashDate: "2025-12-20",
+  bins: [
+    {
+      routeId: "I-80",
+      mileBin: 12,
+      lat: 39.31,
+      lon: -120.32,
+      crashCount: 9,
+      fatalCount: 1,
+      topCause: "Unsafe Speed",
+      firstCrashDate: "2017-01-03",
+      lastCrashDate: "2025-12-20",
+    },
+  ],
+  topCauses: [{ cause: "Unsafe Speed", crashCount: 10, pct: 62 }],
 };
 
 // A typed handle to the fake `get`, so we can set what it returns and check how
@@ -77,6 +103,20 @@ describe("getJourney", () => {
   });
 });
 
+describe("getCrashPatterns", () => {
+  it("sends the routes as one comma-separated param plus the regime", async () => {
+    mockGet.mockResolvedValue({ data: CRASH_PATTERNS });
+
+    const patterns = await getCrashPatterns(["I-80", "US-50"], "SNOW");
+
+    expect(mockGet).toHaveBeenCalledWith("/api/crash-patterns", {
+      params: { routes: "I-80,US-50", regime: "SNOW" },
+    });
+    expect(patterns.crashCount).toBe(16);
+    expect(patterns.bins[0].mileBin).toBe(12);
+  });
+});
+
 // REGIME_CODES is a hand-written mirror of pipeline/regime.py's REGIMES. The
 // shared golden file exercises every regime, so set-equality against its
 // expected labels catches a vocabulary change (a regime added, renamed or
@@ -104,9 +144,11 @@ describe("no safety judgement in the contract", () => {
     return [];
   };
 
-  it("towns and the journey carry no score/rating/verdict keys", () => {
+  it("towns, the journey and the crash record carry no score/rating/verdict keys", () => {
     // Gather every key name from all sample payloads, lower-cased.
-    const all = [...keys(TOWNS), ...keys(JOURNEY)].map((k) => k.toLowerCase());
+    const all = [...keys(TOWNS), ...keys(JOURNEY), ...keys(CRASH_PATTERNS)].map((k) =>
+      k.toLowerCase(),
+    );
 
     // None of them should contain a forbidden word.
     expect(all.filter((k) => FORBIDDEN.some((word) => k.includes(word)))).toEqual([]);

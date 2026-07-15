@@ -1,46 +1,39 @@
-import { useMemo } from 'react'
 import L from 'leaflet'
-import { DAY_LABELS, routeIncidents, type Route, type RouteIncident, type Cause } from '../lib/data'
+import type { CrashPatternsResponse, JourneyResponse, RegimeCode } from '../api/types'
+import { regimeProse } from '../lib/regime'
 import { useReveal } from '../lib/useReveal'
 import { useLeafletMap } from '../lib/useLeafletMap'
 
 interface Props {
-  route: Route
-  dayIdx: number
+  journey: JourneyResponse
+  regime: RegimeCode
+  data: CrashPatternsResponse
 }
 
-interface Cluster {
-  lat: number
-  lng: number
-  items: RouteIncident[]
+// The day the forecast (and so the matched history) is for.
+function dayLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { weekday: 'long' })
 }
 
-export function CrashMapSection({ route, dayIdx }: Props) {
-  const sectionRef = useReveal<HTMLElement>(route)
-  const { cond, similar, list } = useMemo(() => routeIncidents(route, dayIdx), [route, dayIdx])
+/**
+ * The crash record on a map: one marker per occupied mile of road (ADR-0007's
+ * per-mile bins), sized by how much history sits in it. Bins, not individual
+ * crashes, are drawn on purpose - the product's honest resolution is the mile,
+ * and a single mark per mile stays readable where hundreds of points would
+ * not. The basemap itself shows the roads; the journey's stops anchor the view.
+ */
+export function CrashMapSection({ journey, regime, data }: Props) {
+  const sectionRef = useReveal<HTMLElement>(journey)
 
   const mapEl = useLeafletMap({
     mapOptions: { scrollWheelZoom: false, center: [38.78, -120.4], zoom: 9 },
-    deps: [route, list],
+    deps: [data],
     draw: (layer, map) => {
-      // route line, faint underneath
-      L.polyline(route.path, { color: '#9DB183', weight: 3, opacity: 0.4 }).addTo(layer)
-
-      // cluster incidents by rounded coordinate to size markers by density
-      const clusters = new Map<string, Cluster>()
-      list.forEach((inc) => {
-        const key = `${inc.lat.toFixed(2)},${inc.lng.toFixed(2)}`
-        const c = clusters.get(key) ?? { lat: 0, lng: 0, items: [] }
-        c.items.push(inc)
-        clusters.set(key, c)
-      })
-      clusters.forEach((c) => {
-        const n = c.items.length
-        const lat = c.items.reduce((s, i) => s + i.lat, 0) / n
-        const lng = c.items.reduce((s, i) => s + i.lng, 0) / n
+      data.bins.forEach((bin) => {
+        const n = bin.crashCount
         const radius = 7 + Math.min(26, Math.sqrt(n) * 7)
         // calm: muted sage, size = density. no red.
-        const m = L.circleMarker([lat, lng], {
+        const marker = L.circleMarker([bin.lat, bin.lon], {
           radius,
           color: '#C3D3A9',
           weight: 1.5,
@@ -48,21 +41,22 @@ export function CrashMapSection({ route, dayIdx }: Props) {
           fillOpacity: Math.min(0.55, 0.26 + n * 0.05),
           opacity: 0.7,
         })
-        const causeTally = new Map<Cause, number>()
-        c.items.forEach((i) => causeTally.set(i.cause, (causeTally.get(i.cause) ?? 0) + 1))
-        const topCause = [...causeTally.entries()].sort((a, b) => b[1] - a[1])[0][0]
-        const miles = c.items.map((i) => i.mile)
-        const years = c.items.map((i) => i.year)
-        m.bindPopup(
-          `<span class="pop-h">${n} incident${n > 1 ? 's' : ''} in similar weather</span>
-          <div class="pop-row"><span>Mile range</span><b>${Math.min(...miles)}–${Math.max(...miles)}</b></div>
-          <div class="pop-row"><span>Most common</span><b>${topCause}</b></div>
-          <div class="pop-row"><span>Years</span><b>${Math.min(...years)}–${Math.max(...years)}</b></div>`,
+        const years = `${bin.firstCrashDate.slice(0, 4)}–${bin.lastCrashDate.slice(0, 4)}`
+        marker.bindPopup(
+          `<span class="pop-h">${n} crash${n > 1 ? 'es' : ''} in similar weather</span>
+          <div class="pop-row"><span>Where</span><b>mile ${bin.mileBin} of ${bin.routeId}</b></div>
+          <div class="pop-row"><span>Most common</span><b>${bin.topCause ?? 'Unknown'}</b></div>
+          <div class="pop-row"><span>Years</span><b>${years}</b></div>`,
         )
-        m.addTo(layer)
+        marker.addTo(layer)
       })
 
-      map.fitBounds(L.polyline(route.path).getBounds().pad(0.2))
+      // Frame the whole drive: every stop plus every marked mile.
+      const points: [number, number][] = [
+        ...journey.stops.map((s): [number, number] => [s.waypoint.lat, s.waypoint.lon]),
+        ...data.bins.map((b): [number, number] => [b.lat, b.lon]),
+      ]
+      if (points.length) map.fitBounds(L.latLngBounds(points).pad(0.2))
     },
   })
 
@@ -72,25 +66,24 @@ export function CrashMapSection({ route, dayIdx }: Props) {
         <span className="kicker">The map, remembered</span>
         <h2>Where similar days have asked for extra care</h2>
         <p className="sub">
-          Each mark is a recorded incident along your route in weather like your forecast. Larger,
-          denser marks mean more history clustered there — nothing more. Read it as a place to ease
-          off, not a warning to turn back.
+          Each mark is a mile of your route with recorded crashes in weather like your forecast.
+          Larger, denser marks mean more history clustered there, nothing more. Read it as a place
+          to ease off, not a warning to turn back.
         </p>
       </div>
       <div className="crashmap-wrap">
         <div ref={mapEl} className="map map-crash" />
         <aside className="crashmap-side">
           <div className="crashmap-count">
-            <strong>{list.length}</strong>
-            <span>incidents shown</span>
+            <strong>{data.crashCount}</strong>
+            <span>crashes on record</span>
           </div>
           <div className="crashmap-cond">
-            Showing history recorded in <b>{cond.toLowerCase()}-like</b> weather (
-            {similar.join(', ').toLowerCase()}), matched to your forecast for{' '}
-            <b>{DAY_LABELS[dayIdx].toLowerCase()}</b>.
+            Showing history recorded in <b>{regimeProse(regime)}</b> conditions, the worst
+            forecast along your drive for <b>{dayLabel(journey.departureUtc)}</b>.
           </div>
           <div className="scale-legend">
-            <span className="scale-h">Cluster size</span>
+            <span className="scale-h">Mark size</span>
             <div className="scale-row"><i className="scale-dot s1"></i><em>a few</em></div>
             <div className="scale-row"><i className="scale-dot s2"></i><em>several</em></div>
             <div className="scale-row"><i className="scale-dot s3"></i><em>many</em></div>

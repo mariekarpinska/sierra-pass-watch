@@ -4,11 +4,13 @@ import { App } from "./App";
 import * as healthApi from "./api/health";
 import * as townsApi from "./api/towns";
 import * as journeyApi from "./api/journey";
+import * as crashApi from "./api/crashPatterns";
 import type { JourneyResponse, Waypoint } from "./api/types";
 
 vi.mock("./api/health", { spy: true });
 vi.mock("./api/towns", { spy: true });
 vi.mock("./api/journey", { spy: true });
+vi.mock("./api/crashPatterns", { spy: true });
 
 // The backend status indicator (footer) calls getHealth on mount. These tests
 // drive that call directly.
@@ -94,6 +96,9 @@ describe("App - plan a journey and show the live forecast", () => {
     vi.spyOn(healthApi, "getHealth").mockReturnValue(new Promise(() => {}));
     vi.spyOn(townsApi, "getTowns").mockResolvedValue(TOWNS);
     vi.spyOn(journeyApi, "getJourney").mockResolvedValue(JOURNEY);
+    // Keep the crash-history call pending too: its loaded state (Leaflet map
+    // and all) is covered by CrashHistory.test.tsx, not here.
+    vi.spyOn(crashApi, "getCrashPatterns").mockReturnValue(new Promise(() => {}));
   });
 
   // The selects mount empty and fill in after getTowns resolves; wait for the
@@ -131,6 +136,10 @@ describe("App - plan a journey and show the live forecast", () => {
       "south-lake-tahoe",
       expect.any(String),
     );
+    // The crash history kicks off right below, for the journey's highways
+    // under the worst forecast regime (the one SNOW stop here).
+    expect(await screen.findByText(/looking up the road/i)).toBeInTheDocument();
+    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith(["I-80", "US-50"], "SNOW");
   });
 
   it("blocks planning when start and destination are the same", async () => {

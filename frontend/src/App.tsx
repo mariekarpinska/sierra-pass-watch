@@ -3,6 +3,7 @@ import { Nav } from './components/Nav'
 import { Hero } from './components/Hero'
 import { Planner, type Plan } from './components/Planner'
 import { WeatherSection } from './components/WeatherSection'
+import { CrashHistory } from './components/CrashHistory'
 import { MuirQuote } from './components/MuirQuote'
 import { Footer, DisclaimerPill } from './components/Footer'
 import { getJourney } from './api/journey'
@@ -65,7 +66,12 @@ export function App() {
                 <strong style={{ color: 'var(--clay)' }}>{result.message}</strong>
               </p>
             )}
-            {result.phase === 'ok' && <WeatherSection journey={result.journey} />}
+            {result.phase === 'ok' && (
+              <>
+                <WeatherSection journey={result.journey} />
+                <CrashHistory journey={result.journey} />
+              </>
+            )}
           </div>
         )}
         <MuirQuote />

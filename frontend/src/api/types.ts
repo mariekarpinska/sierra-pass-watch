@@ -1,9 +1,8 @@
 /**
  * The API contract, mirrored from backend/api/schemas.py. camelCase, exactly as
  * it comes off the wire. Components import these types; the fetchers in
- * towns.ts / journey.ts return them. The API serves exactly what the UI
- * consumes — the crash-history and hotspot branches bring their own contract
- * when they land (ADR-0007, ADR-0009).
+ * towns.ts / journey.ts / crashPatterns.ts return them. The API serves exactly
+ * what the UI consumes (ADR-0007, ADR-0009).
  *
  * Deliberate contract rule: everything here is historical or descriptive. There
  * is no score, rating, or drive/do-not-drive field, and contract.test.ts guards
@@ -77,6 +76,62 @@ export interface JourneyLeg {
   seasonal: boolean;
   /** Short context, e.g. "closed ~Nov-May". */
   note: string;
+}
+
+/**
+ * One recorded cause and its share of the matched crashes. `cause` is the
+ * warehouse's normalized taxonomy label, e.g. "Unsafe Speed".
+ */
+export interface CauseStat {
+  cause: string;
+  crashCount: number;
+  /** Share of all matched crashes, 0-100, whole number. */
+  pct: number;
+}
+
+/**
+ * One occupied per-mile bin (ADR-0007): mile `mileBin` of `routeId`, with what
+ * the record says happened there under the requested regime. The lat/lon is
+ * the mean crash location inside the bin: a representative point for the map,
+ * not an exact crash site.
+ */
+export interface CrashBin {
+  routeId: string;
+  mileBin: number;
+  lat: number;
+  lon: number;
+  crashCount: number;
+  fatalCount: number;
+  /** The bin's most common recorded cause. */
+  topCause: string | null;
+  /** ISO dates bounding this bin's record. */
+  firstCrashDate: string;
+  lastCrashDate: string;
+}
+
+/**
+ * GET /api/crash-patterns?routes=&regime=
+ *
+ * The crash record for a set of highways (a journey's `via` legs) under one
+ * weather regime: journey-level totals, the occupied per-mile bins for the
+ * map, and the top recorded causes. Descriptive only, like everything else in
+ * this contract.
+ */
+export interface CrashPatternsResponse {
+  regime: RegimeCode;
+  routeIds: string[];
+  crashCount: number;
+  fatalCount: number;
+  /** 0-100, one decimal. Null when crashCount is 0. */
+  pctFatal: number | null;
+  /** True under 8 matched crashes: the UI must present the record as context,
+   *  not a pattern. */
+  smallSample: boolean;
+  /** ISO dates bounding the whole matched record, null when it is empty. */
+  firstCrashDate: string | null;
+  lastCrashDate: string | null;
+  bins: CrashBin[];
+  topCauses: CauseStat[];
 }
 
 /**

@@ -1,7 +1,9 @@
 /* ============================================================
-   SIERRA PASS WATCH — route awareness engine (typed, pure)
-   Deterministic illustrative data — to be replaced by live
-   sources before launch. Not driving advice.
+   SIERRA PASS WATCH - route awareness engine (typed, pure)
+   Deterministic illustrative data, replaced by live sources
+   feature by feature. What remains here backs the two sections
+   that are still mockups (AlertBanner, RouteOverview) and dies
+   with the branches that wire them. Not driving advice.
    ============================================================ */
 
 /* ---------- deterministic RNG (mulberry32) ---------- */
@@ -62,10 +64,6 @@ export interface Incident {
   year: number
 }
 
-export interface RouteIncident extends Incident {
-  mile: number
-}
-
 export interface Route {
   startIdx: number
   endIdx: number
@@ -74,15 +72,6 @@ export interface Route {
   miles: number[]
   totalMiles: number
   estDriveMinutes: number
-}
-
-export interface Forecast {
-  cond: Condition
-  hiT: number
-  loT: number
-  wind: number
-  vis: string
-  precip: number
 }
 
 /* ---------- corridor: Highway 50 / Carson Pass ---------- */
@@ -105,18 +94,6 @@ const BENDS: Record<string, LatLng[]> = {
   'Kyburz|Strawberry': [[38.786, -120.24], [38.799, -120.185]],
   'Strawberry|Kirkwood': [[38.812, -120.108], [38.76, -120.075], [38.705, -120.062]],
   'Kirkwood|South Lake Tahoe': [[38.72, -120.01], [38.82, -119.995], [38.876, -119.988]],
-}
-
-/* which historical conditions count as "like" a given forecast condition */
-export const SIMILAR: Record<Condition, Condition[]> = {
-  Clear: ['Clear', 'Partly Cloudy', 'Wind'],
-  'Partly Cloudy': ['Partly Cloudy', 'Clear', 'Cloudy'],
-  Cloudy: ['Cloudy', 'Partly Cloudy', 'Fog'],
-  Rain: ['Rain', 'Fog', 'Cloudy'],
-  Fog: ['Fog', 'Rain', 'Cloudy'],
-  Wind: ['Wind', 'Clear', 'Partly Cloudy'],
-  Snow: ['Snow', 'Ice'],
-  Ice: ['Ice', 'Snow', 'Fog'],
 }
 
 /* ---------- geo helpers ---------- */
@@ -200,50 +177,6 @@ function buildIncidents(): Incident[] {
 }
 export const INCIDENTS: Incident[] = buildIncidents()
 
-/* ---------- forecast days ---------- */
-export const DAY_LABELS = ['Today', 'Tomorrow', 'In 2 days', 'In 3 days', 'In 4 days'] as const
-
-export const DAY_DATES: Date[] = (() => {
-  const base = new Date(2026, 6, 9) // fixed reference date for a stable demo
-  return DAY_LABELS.map((_, i) => {
-    const d = new Date(base)
-    d.setDate(base.getDate() + i)
-    return d
-  })
-})()
-
-export function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-}
-
-/* ---------- weather generation (deterministic per town/day) ---------- */
-export function weatherFor(town: Town, dayIdx: number): Forecast {
-  const r = rng(hash(town.id) + dayIdx * 911)
-  const hi = Math.min(1, (town.el - 1200) / 6600)
-  const roll = r()
-  // higher elevation & later days → more varied/adverse chance
-  const adverse = hi * 0.5 + dayIdx * 0.05
-  let cond: Condition
-  if (roll < 0.4 - adverse * 0.3) cond = 'Clear'
-  else if (roll < 0.6 - adverse * 0.15) cond = 'Partly Cloudy'
-  else if (roll < 0.74) cond = 'Cloudy'
-  else if (roll < 0.82) cond = hi > 0.55 ? 'Snow' : 'Rain'
-  else if (roll < 0.9) cond = hi > 0.6 ? 'Ice' : 'Fog'
-  else cond = 'Wind'
-  const baseTemp = 86 - town.el * 0.0035 - dayIdx * 1.2 + (r() * 8 - 4)
-  const hiT = Math.round(baseTemp)
-  const loT = Math.round(baseTemp - (10 + hi * 14))
-  const wind = Math.round(5 + r() * 20 + (cond === 'Wind' ? 18 : 0))
-  const vis = cond === 'Fog' ? '1–3 mi' : cond === 'Snow' ? '2–5 mi' : cond === 'Rain' ? '4–7 mi' : '10+ mi'
-  const precip =
-    cond === 'Snow' ? 70 + Math.round(r() * 25)
-    : cond === 'Rain' ? 55 + Math.round(r() * 30)
-    : cond === 'Ice' ? 45 + Math.round(r() * 30)
-    : cond === 'Fog' ? 20 + Math.round(r() * 20)
-    : Math.round(r() * 20)
-  return { cond, hiT, loT, wind, vis, precip }
-}
-
 /* ---------- route computation ---------- */
 // Drive-time model: corridor average speed plus a fixed dwell per waypoint.
 const AVG_MPH = 42
@@ -277,60 +210,6 @@ export function computeRoute(startIdx: number, endIdx: number): Route {
 export function townMile(route: Route, idx: number): number {
   const pos = route.order.indexOf(idx)
   return pos < 0 ? 0 : route.miles[pos]
-}
-
-/* ---------- dominant forecast condition for the day across route ---------- */
-const CONDITION_WEIGHT: Record<Condition, number> = {
-  Snow: 3,
-  Ice: 3,
-  Fog: 2.2,
-  Rain: 2,
-  Wind: 1.4,
-  Cloudy: 1,
-  'Partly Cloudy': 0.9,
-  Clear: 0.8,
-}
-
-export function dominantCondition(route: Route, dayIdx: number): Condition {
-  const counts = new Map<Condition, number>()
-  route.order.forEach((i) => {
-    const c = weatherFor(TOWNS[i], dayIdx).cond
-    counts.set(c, (counts.get(c) ?? 0) + 1)
-  })
-  // weight adverse conditions so the "insight" tracks the riskier segments
-  let best: Condition = 'Clear'
-  let bestScore = -1
-  counts.forEach((n, c) => {
-    const sc = n * CONDITION_WEIGHT[c]
-    if (sc > bestScore) {
-      bestScore = sc
-      best = c
-    }
-  })
-  return best
-}
-
-/* ---------- incidents on THIS route matching similar weather ---------- */
-export interface RouteHistory {
-  cond: Condition
-  similar: Condition[]
-  list: RouteIncident[]
-}
-
-export function routeIncidents(route: Route, dayIdx: number): RouteHistory {
-  const cond = dominantCondition(route, dayIdx)
-  const similar = SIMILAR[cond]
-  const segsOnRoute = new Set<number>()
-  for (let k = 0; k < route.order.length - 1; k++) {
-    segsOnRoute.add(Math.min(route.order[k], route.order[k + 1]))
-  }
-  const list: RouteIncident[] = INCIDENTS.filter(
-    (inc) => segsOnRoute.has(inc.segIdx) && similar.includes(inc.cond),
-  ).map((inc) => ({
-    ...inc,
-    mile: Math.round(townMile(route, inc.segIdx) + inc.tFrac * segMiles(inc.segIdx)),
-  }))
-  return { cond, similar, list }
 }
 
 /* incidents on the route regardless of weather (for the recent-alert pick) */
