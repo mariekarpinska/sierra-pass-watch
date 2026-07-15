@@ -10,7 +10,7 @@ polyline. The output file carries, per route:
 * ``anchors``      — every town with its ``measureMi`` (distance-along-route)
 
 Crashes are later projected onto the same polyline (backfill), so crashes,
-per-mile bins, hotspots and anchor labels all share one coordinate: the
+per-mile bins and anchor labels all share one coordinate: the
 measure. Routes with a single town (short spurs) get no polyline — their
 crash record stays at the route grain, an accepted limit noted in ADR-0007.
 
@@ -102,7 +102,7 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "python -m pipeline.build_polylines from OSRM driving geometry through "
             "each route's catalogue towns. Committed so nothing depends on OSRM at "
             "build/run time. The measure axis here is the one crashes are "
-            "linear-referenced onto (backfill) and hotspot bins are keyed by."
+            "linear-referenced onto (backfill) and mile bins are keyed by."
         ),
         "routes": routes,
     }

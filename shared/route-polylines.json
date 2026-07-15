@@ -1,5 +1,5 @@
 {
- "description": "Route polylines + anchor measures (miles from route start), built by python -m pipeline.build_polylines from OSRM driving geometry through each route's catalogue towns. Committed so nothing depends on OSRM at build/run time. The measure axis here is the one crashes are linear-referenced onto (backfill) and hotspot bins are keyed by.",
+ "description": "Route polylines + anchor measures (miles from route start), built by python -m pipeline.build_polylines from OSRM driving geometry through each route's catalogue towns. Committed so nothing depends on OSRM at build/run time. The measure axis here is the one crashes are linear-referenced onto (backfill) and mile bins are keyed by.",
  "routes": {
   "I-80": {
    "lengthMiles": 54.04,

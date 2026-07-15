@@ -56,23 +56,6 @@ models:
                 values: [1, 2, 3]
                 quote: false
 
-  - name: mart_hotspots
-    description: >
-      Every occupied (route x per-mile bin x regime) with crash concentration
-      vs the route's per-mile average. Grain uniqueness is checked by a singular
-      test (tests/assert_hotspots_unique_grain.sql).
-    columns:
-      - name: weather_regime
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: "{{ var('regimes') }}"
-      - name: concentration_ratio
-        tests: [not_null]
-      - name: is_hotspot
-        tests: [not_null]
-
   - name: mart_route_crashes
     description: Crash-point detail per route, for the map.
     columns:

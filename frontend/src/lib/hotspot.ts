@@ -3,8 +3,8 @@
  * and the crash map so they always agree on which miles stand out. A bin is
  * accented when it holds notably more history than the drive's average
  * marked mile; the densest such bin is the one the caption names and the map
- * marks. A display heuristic only — the warehouse's concentration ratio is
- * the rigorous definition, not served by the API.
+ * marks. Deliberately simple and relative to this journey's matched record —
+ * it claims "denser than the rest of this drive", nothing more.
  */
 import type { CrashBin } from '../api/types'
 

@@ -10,7 +10,7 @@ flowchart LR
   PROD -->|Kafka| CONS[consumers]
   PROD -.->|batch backfill| PG
   CONS --> PG[(Postgres bronze\nraw_road_events, crashes, alerts)]
-  PG -->|dbt build| MARTS[(analytics marts\npatterns, hotspots, causes, active alerts)]
+  PG -->|dbt build| MARTS[(analytics marts\npatterns, causes, active alerts)]
   MARTS --> API[FastAPI\nuvicorn]
   API -->|/api proxied| FE[React + TS SPA]
 ```

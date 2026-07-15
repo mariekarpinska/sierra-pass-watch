@@ -29,7 +29,6 @@ flowchart LR
     MCC[mart_crash_conditions]
     MCP[mart_crash_patterns]
     MPC[mart_pattern_causes]
-    MH[mart_hotspots]
     MRC[mart_route_crashes]
     MAA[[mart_active_alerts view]]
   end
@@ -38,9 +37,8 @@ flowchart LR
   CR --> SCR --> MCC
   AL --> SAL --> MAA
   SEG --> MCC
-  MCC --> MCP --> MH
-  MCC --> MPC --> MH
-  RL --> MH
+  MCC --> MCP
+  MCC --> MPC
   MCC --> MRC
 ```
 
@@ -51,7 +49,6 @@ flowchart LR
 | `mart_crash_conditions` | one row per crash | the regime each crash happened in (sensor within 2 h, else report) | table |
 | `mart_crash_patterns` | route x mile bin x regime | how many crashes, how many fatal, over what dates | table |
 | `mart_pattern_causes` | route x mile bin x regime x rank | the top three recorded causes | table |
-| `mart_hotspots` | route x mile bin x regime | where crashes concentrate vs the route's per-mile average | table |
 | `mart_route_crashes` | one row per crash | the crash points the map plots | table |
 | `mart_active_alerts` | one row per recent alert | the near-real-time chain-control / incident feed | **view** |
 
@@ -60,7 +57,9 @@ flowchart LR
 journey-level top causes grouped over `mart_crash_conditions`. Why the API
 composes at request time instead of a journey-grain mart is
 [ADR-0010](adr/0010-crash-history-at-journey-grain.md). `mart_active_alerts`
-is consumed by the alerts branch; `mart_hotspots` has no consumer.
+is consumed by the alerts branch. (An earlier `mart_hotspots` — route-relative
+crash concentration — was removed once the map's density marks covered the
+product need; nothing served it.)
 
 ## Two spatial grains, on purpose (ADR-0007)
 
@@ -74,30 +73,6 @@ route, or a point off the polyline) has a null bin: it stays in
 per-mile marts, so a per-mile query answers honestly empty rather than
 inventing a location.
 
-## Why the hotspot denominator is the crash-bearing span
-
-`concentration_ratio = bin crashes / (route crashes in that regime / covered
-miles)`, where `covered_miles` is the span from the first to the last occupied
-mile bin. The ratio then reads honestly: "this mile has N times the crashes of
-the typical mile where crashes actually happen on this road."
-
-The obvious-looking alternative, dividing by the **full** route length, does not
-work here. Sierra passes are mostly empty approach miles, so that average is
-near zero, every populated bin divides by it and scores in the dozens, the
-`>= 1.5` gate never binds, and `is_hotspot` quietly collapses to "count >= 8".
-Measuring over the active span fixes that while still letting the empty miles
-*between* clusters dilute the average (only the long approaches outside the span
-are excluded). No zero-crash grid has to be materialized: the span comes from
-`min`/`max` of the occupied bins.
-
-A bin flags as a hotspot at ratio >= 1.5 **and** >= 8 crashes; below 8 it is
-noise and the UI keeps showing the small-sample caveat. A lone cluster (one
-occupied bin) is its own average, so it scores 1.0 and is not a *relative*
-hotspot; `crash_count` is still exposed for any "high volume" signal the UI
-wants independent of concentration. Route length for display (the picker's
-"Distance") comes from the `route_lengths` seed, which is loaded for the API to
-read but no longer feeds this mart.
-
 ## Why `mart_active_alerts` is a view
 
 Every other mart is a batch table rebuilt on the pipeline's schedule. The alert
@@ -110,7 +85,7 @@ runs. It is the one place the batch warehouse yields to the real-time path.
 
 `dbt build` runs the tests inline with the models. Alongside the column tests
 (`not_null`, `unique`, `accepted_values` on the regime and cause vocabularies),
-three singular tests
+two singular tests
 ([warehouse/tests/](../warehouse/tests/)) assert each aggregate mart holds
 exactly one row per its grain.
 
@@ -118,8 +93,8 @@ exactly one row per its grain.
 > (say the nearest-anchor attribution matched a crash to two anchors, or a
 > sensor-reading join returned more than one row), that crash would appear twice
 > and every count built on top of it would be inflated: `crash_count` in
-> `mart_crash_patterns`, and through it the `concentration_ratio` and the
-> `is_hotspot` flag in `mart_hotspots`. The singular test (`group by <grain> having count(*) > 1`)
+> `mart_crash_patterns`, and through it every total and cause share the API
+> serves. The singular test (`group by <grain> having count(*) > 1`)
 > is the thing that fails the build the moment a crash is double counted.
 
 ### Inputs and environment are tested too
