@@ -19,19 +19,18 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import Depends, FastAPI, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-from pipeline.regime import REGIMES
 
 from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
 from api.crashes import (
     CrashHistoryStore,
-    Leg,
     PostgresCrashHistoryStore,
     build_crash_patterns,
     get_crash_store,
+    segment_legs,
 )
 from api.journeys import JourneyIndex, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
@@ -47,6 +46,7 @@ from api.weather import (
     OpenMeteoForecastProvider,
     get_forecast_service,
     parse_departure,
+    worst_regime,
 )
 
 log = logging.getLogger(__name__)
@@ -173,7 +173,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 name=r.name,
                 seasonal=r.seasonal,
                 note=r.note,
-                span=resolved.spans.get(r.id),
+                span=resolved.span_for(r.id),
             )
             for road in resolved.via
             if (r := routes_by_id.get(road)) is not None
@@ -189,58 +189,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stops=stops,
         )
 
-    # The crash record for a journey under one weather regime: totals, occupied
-    # per-mile bins, top causes (from the dbt marts, composed per request -
-    # ADR-0010). The journey is named by its towns, exactly like /api/journey,
-    # and the server resolves it against the same committed index - so the
-    # roads AND the mile span the drive covers on each road come from one
-    # place, never from request input. Missing/invalid params are a 400; an
-    # unknown town or an unbuilt pair is a 404, mirroring /api/journey.
-    # Declared `def`, not `async def`: FastAPI then runs it on a worker thread,
-    # which is what lets the store block on the sync database driver without
-    # stalling the event loop (see crashes.py for why the driver is sync).
+    # The crash record for a journey, each stretch matched to its own
+    # forecast: totals, occupied per-mile bins, top causes (from the dbt
+    # marts, composed per request - ADR-0010). The journey is named by its
+    # towns, exactly like /api/journey, and the server resolves it against the
+    # same committed index and samples the same forecast service - so the
+    # roads, the mile stretches and their regimes all come from one place,
+    # never from request input. Missing/invalid params are a 400; an unknown
+    # town or an unbuilt pair is a 404, mirroring /api/journey.
+    # `async def` for the forecast await; the two store reads hop to the
+    # worker threadpool explicitly, which is what lets them block on the sync
+    # database driver without stalling the event loop (see crashes.py for why
+    # the driver is sync).
     @app.get("/api/crash-patterns", response_model=CrashPatternsResponse)
-    def crash_patterns(
+    async def crash_patterns(
         from_: str | None = Query(default=None, alias="from"),
         to: str | None = None,
-        regime: str | None = None,
+        departure: str | None = None,
         store: CrashHistoryStore = Depends(get_crash_store),
         index: JourneyIndex = Depends(get_journey_index),
+        service: ForecastService = Depends(get_forecast_service),
     ):
-        if not from_ or not to or not regime:
-            return JSONResponse(
-                status_code=400, content={"error": "from, to and regime are required"}
-            )
-        if regime not in REGIMES:
+        if not from_ or not to or not departure:
             return JSONResponse(
                 status_code=400,
-                content={"error": f"regime must be one of {', '.join(REGIMES)}"},
+                content={"error": "from, to and departure are required"},
             )
         if from_ == to:
             return JSONResponse(
                 status_code=400, content={"error": "from and to must be different towns"}
+            )
+        try:
+            departure_at = parse_departure(departure)
+        except ValueError:
+            return JSONResponse(
+                status_code=400, content={"error": "departure must be an ISO 8601 time"}
             )
         resolved = index.resolve(from_, to)
         if resolved is None:
             return JSONResponse(
                 status_code=404, content={"error": "unknown town or journey"}
             )
-        # One leg per road (a drive can rejoin a road; the record is the same
-        # either way). Spans arrive as mile measures; bins are whole miles, so
-        # int() floors each end and driving any part of a mile keeps its bin.
-        legs = []
-        for road in dict.fromkeys(resolved.via):
-            span = resolved.spans.get(road)
-            legs.append(
-                Leg(
-                    route_id=road,
-                    lo_bin=int(span[0]) if span else None,
-                    hi_bin=int(span[1]) if span else None,
-                )
-            )
-        bins = store.bins(legs, regime)
-        causes = store.causes(legs, regime)
-        return build_crash_patterns([leg.route_id for leg in legs], regime, bins, causes)
+        # Each stop's departure-window forecast; the journey request just made
+        # the same calls, so the service's 5-minute cache usually answers.
+        stops = await service.forecast_towns(resolved.stops, departure_at)
+        regimes = {stop.waypoint.id: stop.regime for stop in stops}
+        legs = segment_legs(
+            resolved.via,
+            resolved.anchors,
+            regimes,
+            fallback=worst_regime(list(regimes.values())),
+        )
+        route_ids = list(dict.fromkeys(resolved.via))
+        if not legs:
+            # Nothing but UNKNOWN forecasts: no weather to match, so the
+            # record is honestly empty rather than a guess.
+            return build_crash_patterns(route_ids, [], [])
+        bins = await run_in_threadpool(store.bins, legs)
+        causes = await run_in_threadpool(store.causes, legs)
+        return build_crash_patterns(route_ids, bins, causes)
 
     return app
 

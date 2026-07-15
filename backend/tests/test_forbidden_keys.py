@@ -56,11 +56,12 @@ class _OnePopulatedBin:
     """The database seam faked with one fully-populated bin and cause, so
     /api/crash-patterns returns every contract field without Postgres."""
 
-    def bins(self, legs, regime):
+    def bins(self, legs):
         return [
             BinRow(
                 route_id="I-80",
                 mile_bin=12,
+                regime="CLEAR_DRY",
                 lat=39.31,
                 lon=-120.32,
                 crash_count=9,
@@ -71,7 +72,7 @@ class _OnePopulatedBin:
             )
         ]
 
-    def causes(self, legs, regime):
+    def causes(self, legs):
         return [CauseRow(cause="Unsafe Speed", crash_count=9)]
 
 
@@ -91,7 +92,7 @@ def client():
         "/api/health",
         "/api/towns",
         "/api/journey?from=colfax&to=south-lake-tahoe&departure=2026-01-12T15:00:00Z",
-        "/api/crash-patterns?from=colfax&to=south-lake-tahoe&regime=SNOW",
+        "/api/crash-patterns?from=colfax&to=south-lake-tahoe&departure=2026-01-12T15:00:00Z",
     ],
 )
 def test_no_response_carries_a_safety_judgement(client, path) -> None:

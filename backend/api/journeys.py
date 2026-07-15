@@ -28,14 +28,15 @@ class TownPoint(BaseModel):
 class JourneyEntry(BaseModel):
     """The anchors along one drive, ordered from the lexically-smaller town id,
     plus the highways the drive follows (for the seasonal-pass warning) and,
-    per highway, the [first, last] mile the drive covers on it. A road absent
-    from `spans` could not be bounded at build time (build_journeys.leg_spans);
-    its crash record covers the whole corridor. Defaults to {} so index files
-    from before spans existed still load."""
+    per highway, each on-road stop's mile measure
+    (build_journeys.leg_anchor_miles). A road absent from `anchors` has no
+    measure axis (a spur) or no stop near it; its crash record covers the
+    whole corridor. Defaults to {} so index files from before anchors existed
+    still load."""
 
     towns: list[str]
     routes: list[str]
-    spans: dict[str, tuple[float, float]] = {}
+    anchors: dict[str, dict[str, float]] = {}
     miles: float
     minutes: int
 
@@ -43,13 +44,22 @@ class JourneyEntry(BaseModel):
 class ResolvedJourney(BaseModel):
     """A journey resolved for a specific direction: the ordered stops as
     route-independent waypoints (a journey crosses highways, so no single route
-    owns them), the highways travelled in order, their mile spans, plus totals."""
+    owns them), the highways travelled in order, their per-road anchor
+    measures, plus totals."""
 
     stops: list[Waypoint]
     via: list[str]
-    spans: dict[str, tuple[float, float]]
+    anchors: dict[str, dict[str, float]]
     miles: float
     minutes: int
+
+    def span_for(self, road: str) -> tuple[float, float] | None:
+        """The [first, last] mile the drive covers on a road, bounded by its
+        anchors. None below two anchors: one point cannot bound a stretch."""
+        measures = list(self.anchors.get(road, {}).values())
+        if len(measures) < 2:
+            return None
+        return (min(measures), max(measures))
 
 
 class JourneyIndex(BaseModel):
@@ -84,10 +94,10 @@ class JourneyIndex(BaseModel):
             for slug in slugs
             if (town := self.towns.get(slug)) is not None
         ]
-        # Spans are measures on each road's own mile axis, so unlike the stop
-        # and road lists they read the same in either direction of travel.
+        # Anchor measures live on each road's own mile axis, so unlike the
+        # stop and road lists they read the same in either direction of travel.
         return ResolvedJourney(
-            stops=stops, via=via, spans=entry.spans, miles=entry.miles, minutes=entry.minutes
+            stops=stops, via=via, anchors=entry.anchors, miles=entry.miles, minutes=entry.minutes
         )
 
 

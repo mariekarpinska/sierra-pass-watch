@@ -2,19 +2,21 @@
 
 The dbt marts hold the crash record at per-mile-bin grain, one row per
 (route, mile bin, weather regime): see warehouse/ and ADR-0007. A journey is a
-request-time set of highway legs, each with the mile span the drive covers on
-that road (from the committed journey index), so no mart can pre-answer "what
+request-time set of road stretches, each matched to its own forecast: the
+committed journey index carries every on-road anchor town's mile measure, and
+segment_legs cuts each road at the midpoints between anchors and labels each
+piece with its nearest anchor's forecast regime. No mart can pre-answer "what
 happened on THESE stretches in THIS weather"; instead this module composes the
 marts per request (ADR-0010):
 
-  * the occupied bins inside the journey's leg spans under the given regime
+  * the occupied bins inside each segment under that segment's regime
     (mart_crash_patterns, with each bin's most common cause joined on), and
-  * the top recorded causes across all those stretches together, grouped over
-    the per-crash mart (mart_crash_conditions) because per-bin top-3 lists
-    cannot be summed into an honest journey-level ranking.
+  * the top recorded causes across all segments together, grouped over the
+    per-crash mart (mart_crash_conditions) because per-bin top-3 lists cannot
+    be summed into an honest journey-level ranking.
 
-A leg without a span (build_journeys could not bound it) keeps its whole
-corridor: over-including is the safe direction for a crash record.
+A road without anchors keeps its whole corridor (over-including is the safe
+direction for a crash record) under the journey's worst forecast regime.
 
 Reads use psycopg's SYNCHRONOUS pool on purpose, with the endpoint declared
 `def` so FastAPI runs it on its worker threadpool instead of the event loop.
@@ -53,21 +55,77 @@ SMALL_SAMPLE_THRESHOLD = 8
 
 @dataclass(frozen=True)
 class Leg:
-    """One travelled highway, with the whole mile bins the drive's span covers
-    on it. Bins are whole miles, so driving any part of a mile includes that
-    bin. None bounds mean no span is known - the whole corridor matches."""
+    """One stretch of a travelled highway with the forecast regime to match
+    there, in whole mile bins (driving any part of a mile includes its bin).
+    None bounds mean the whole corridor matches (a road with no anchors)."""
 
     route_id: str
     lo_bin: int | None
     hi_bin: int | None
+    regime: str
+
+
+def segment_legs(
+    via: list[str],
+    anchors: dict[str, dict[str, float]],
+    regimes: dict[str, str],
+    fallback: str,
+) -> list[Leg]:
+    """Cut each travelled road into stretches, each matched to its own
+    forecast: the road is split at the midpoints between its anchor towns and
+    each piece takes its nearest anchor's regime. Pure, so the cutting math is
+    unit-testable without a database or a forecast.
+
+    ``regimes`` maps town slug -> that town's forecast regime; ``fallback`` is
+    the journey's worst regime, used for a road with no anchors (its whole
+    corridor still needs a label). Stretches whose regime is UNKNOWN are
+    dropped: there is no weather to match history against, and matching
+    UNKNOWN-labelled crashes would present data gaps as a forecast. Adjacent
+    same-regime stretches merge, so a uniform-forecast road stays one leg.
+    """
+    legs: list[Leg] = []
+    for road in dict.fromkeys(via):
+        marks = sorted(
+            (mile, regimes[slug])
+            for slug, mile in anchors.get(road, {}).items()
+            if slug in regimes
+        )
+        if not marks:
+            if fallback != "UNKNOWN":
+                legs.append(Leg(road, None, None, fallback))
+            continue
+        if len(marks) == 1:
+            # One anchor cannot bound a stretch: whole corridor, its regime.
+            if marks[0][1] != "UNKNOWN":
+                legs.append(Leg(road, None, None, marks[0][1]))
+            continue
+        # Bin-sized pieces: piece i runs from the previous cut to the midpoint
+        # bin between anchor i and anchor i+1 (the last piece to the far
+        # anchor). Cuts are whole bins so pieces can never overlap-count a bin.
+        lo_bin = int(marks[0][0])
+        hi_bin = int(marks[-1][0])
+        pieces: list[Leg] = []
+        start = lo_bin
+        for i, (mile, regime) in enumerate(marks):
+            end = int((mile + marks[i + 1][0]) / 2) if i + 1 < len(marks) else hi_bin
+            if end < start:  # anchors under a mile apart: piece absorbed
+                continue
+            if pieces and pieces[-1].regime == regime:
+                pieces[-1] = Leg(road, pieces[-1].lo_bin, end, regime)
+            else:
+                pieces.append(Leg(road, start, end, regime))
+            start = end + 1
+        legs.extend(piece for piece in pieces if piece.regime != "UNKNOWN")
+    return legs
 
 
 @dataclass(frozen=True)
 class BinRow:
-    """One occupied (route, mile bin) under the requested regime."""
+    """One occupied (route, mile bin) under its stretch's matched regime."""
 
     route_id: str
     mile_bin: int
+    regime: str
     lat: float
     lon: float
     crash_count: int
@@ -88,32 +146,37 @@ class CauseRow:
 class CrashHistoryStore(Protocol):
     """The database seam. Tests inject a fake; production uses Postgres."""
 
-    def bins(self, legs: list[Leg], regime: str) -> list[BinRow]: ...
+    def bins(self, legs: list[Leg]) -> list[BinRow]: ...
 
-    def causes(self, legs: list[Leg], regime: str) -> list[CauseRow]: ...
+    def causes(self, legs: list[Leg]) -> list[CauseRow]: ...
 
 
-# Both queries scope each road to its leg's bin span with the same join:
-# unnest() zips the three parallel arrays into an inline (route_id, lo, hi)
-# table - one query however many legs, all values parameterized (no SQL built
-# per leg). A NULL lo means the leg has no span, so the whole corridor matches.
+# Both queries scope each road stretch to its own regime with the same join:
+# unnest() zips the four parallel arrays into an inline (route_id, lo, hi,
+# regime) table - one query however many legs, all values parameterized (no
+# SQL built per leg). A NULL lo means the leg has no bounds, so the whole
+# corridor matches. Legs on one road never overlap (segment_legs cuts at
+# whole bins), so no bin can be counted twice.
 _LEGS_JOIN = """
     join unnest(
-            %(route_ids)s::text[], %(lo_bins)s::int[], %(hi_bins)s::int[]
-        ) as leg(route_id, lo_bin, hi_bin)
+            %(route_ids)s::text[], %(lo_bins)s::int[], %(hi_bins)s::int[],
+            %(regimes)s::text[]
+        ) as leg(route_id, lo_bin, hi_bin, regime)
         on leg.route_id = {table}.route_id
+        and leg.regime = {table}.weather_regime
         and (leg.lo_bin is null
              or {table}.mile_bin between leg.lo_bin and leg.hi_bin)
 """
 
-# Occupied per-mile bins inside the journey's leg spans under the requested
-# regime, each with its rank-1 cause for the map popup. LEFT JOIN so a bin
-# never disappears if its causes row is missing (it cannot be, by construction
-# in dbt, but a join should not be able to hide crashes).
+# Occupied per-mile bins inside the journey's stretches, each under that
+# stretch's regime and with its rank-1 cause for the map popup. LEFT JOIN so
+# a bin never disappears if its causes row is missing (it cannot be, by
+# construction in dbt, but a join should not be able to hide crashes).
 _BINS_SQL = sql.SQL("""
     select
         patterns.route_id,
         patterns.mile_bin,
+        patterns.weather_regime         as regime,
         patterns.bin_lat                as lat,
         patterns.bin_lon                as lon,
         patterns.crash_count,
@@ -128,23 +191,21 @@ _BINS_SQL = sql.SQL("""
         and top_cause.mile_bin = patterns.mile_bin
         and top_cause.weather_regime = patterns.weather_regime
         and top_cause.cause_rank = 1
-    where patterns.weather_regime = %(regime)s
     order by patterns.route_id, patterns.mile_bin
 """)
 
-# Top causes across every crash inside the journey's leg spans under this
-# regime. The 'mile_bin is not null' filter matches the aggregate marts: a
-# crash with no per-mile position is not part of the per-mile story
-# (ADR-0007). Ties break alphabetically so the same data always ranks the
-# same way.
+# Top causes across every crash inside the journey's stretches, each under
+# its stretch's regime. The 'mile_bin is not null' filter matches the
+# aggregate marts: a crash with no per-mile position is not part of the
+# per-mile story (ADR-0007). Ties break alphabetically so the same data
+# always ranks the same way.
 _CAUSES_SQL = sql.SQL("""
     select
         primary_factor                  as cause,
         count(*)                        as crash_count
     from {schema}.mart_crash_conditions as conditions
 """ + _LEGS_JOIN.format(table="conditions") + """
-    where conditions.weather_regime = %(regime)s
-        and conditions.mile_bin is not null
+    where conditions.mile_bin is not null
     group by primary_factor
     order by count(*) desc, primary_factor
     limit %(limit)s
@@ -152,11 +213,12 @@ _CAUSES_SQL = sql.SQL("""
 
 
 def _leg_params(legs: list[Leg]) -> dict:
-    """The three parallel arrays the legs join binds."""
+    """The four parallel arrays the legs join binds."""
     return {
         "route_ids": [leg.route_id for leg in legs],
         "lo_bins": [leg.lo_bin for leg in legs],
         "hi_bins": [leg.hi_bin for leg in legs],
+        "regimes": [leg.regime for leg in legs],
     }
 
 
@@ -196,21 +258,19 @@ class PostgresCrashHistoryStore:
                 cur.execute(query.format(schema=self._schema), params)
                 return cur.fetchall()
 
-    def bins(self, legs: list[Leg], regime: str) -> list[BinRow]:
-        rows = self._fetch_all(_BINS_SQL, {**_leg_params(legs), "regime": regime})
+    def bins(self, legs: list[Leg]) -> list[BinRow]:
+        rows = self._fetch_all(_BINS_SQL, _leg_params(legs))
         return [BinRow(**row) for row in rows]
 
-    def causes(self, legs: list[Leg], regime: str) -> list[CauseRow]:
+    def causes(self, legs: list[Leg]) -> list[CauseRow]:
         rows = self._fetch_all(
-            _CAUSES_SQL,
-            {**_leg_params(legs), "regime": regime, "limit": TOP_CAUSES},
+            _CAUSES_SQL, {**_leg_params(legs), "limit": TOP_CAUSES}
         )
         return [CauseRow(**row) for row in rows]
 
 
 def build_crash_patterns(
     route_ids: list[str],
-    regime: str,
     bins: list[BinRow],
     causes: list[CauseRow],
 ) -> CrashPatternsResponse:
@@ -220,7 +280,6 @@ def build_crash_patterns(
     crash_count = sum(row.crash_count for row in bins)
     fatal_count = sum(row.fatal_count for row in bins)
     return CrashPatternsResponse(
-        regime=regime,
         route_ids=route_ids,
         crash_count=crash_count,
         fatal_count=fatal_count,
@@ -240,6 +299,7 @@ def build_crash_patterns(
             CrashBin(
                 route_id=row.route_id,
                 mile_bin=row.mile_bin,
+                regime=row.regime,
                 lat=row.lat,
                 lon=row.lon,
                 crash_count=row.crash_count,

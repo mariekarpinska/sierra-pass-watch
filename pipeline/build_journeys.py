@@ -12,9 +12,9 @@ Output (committed, read into memory by the API like the route catalogue):
 
 * ``towns``    - the picker's directory: slug -> {name, lat, lon}
 * ``journeys`` - "{slugA}|{slugB}" (slugs sorted) -> {towns: [slug ...], routes,
-                 spans, miles, minutes}, the anchor towns along that drive in
-                 A->B order, the highways it follows, and per highway the
-                 [first, last] mile the drive covers on it (leg_spans)
+                 anchors, miles, minutes}, the anchor towns along that drive in
+                 A->B order, the highways it follows, and per highway each
+                 on-road stop's mile measure (leg_anchor_miles)
 
 This is a build-time tool, run rarely and by hand; nothing at build or run time
 depends on OSRM being up. Re-run it only when the catalogue's towns change:
@@ -119,47 +119,46 @@ def routes_for(slugs: list[str], towns: dict[str, dict]) -> list[str]:
     return via
 
 
-def leg_spans(
+def leg_anchor_miles(
     slugs: list[str],
     roads: list[str],
     towns: dict[str, dict],
     geometry_for=None,
-) -> dict[str, list[float]]:
-    """For each travelled road, the [first, last] mile the journey covers on it,
-    bounded by the journey's own stops projected onto the road's committed
-    polyline (the same measure axis crashes and bins live on, ADR-0007).
+) -> dict[str, dict[str, float]]:
+    """For each travelled road, the journey's stops that sit on it (within
+    ON_ROUTE_MILES) with their mile measure along the road's committed
+    polyline - the same measure axis crashes and bins live on (ADR-0007).
 
-    A road needs at least two on-route stops to bound a span; with fewer, and
-    for the spur routes that have no polyline, the road gets no span and the
-    API falls back to its whole corridor - over-including is the safe direction
-    for a crash record. The span is stop-bounded, so the mile or two between
-    the last anchor and the actual interchange is not counted; anchors are the
-    journey's unit of position, and the product claims nothing finer.
+    The measures are what the API needs to work at sub-journey grain: the
+    outermost two bound the stretch the drive covers on that road (its span),
+    and the points between them are where the drive's weather is actually
+    known, so the crash match can follow the forecast along the road. The
+    bounds are stop-based, so the mile or two between the last anchor and the
+    actual interchange is not counted; anchors are the journey's unit of
+    position, and the product claims nothing finer. Spur routes with no
+    polyline get no entry.
 
     ``geometry_for`` is the polyline lookup, replaceable in tests; it defaults
     to the committed route-polylines.json.
     """
     if geometry_for is None:
         geometry_for = _route_geometry
-    spans: dict[str, list[float]] = {}
+    anchors: dict[str, dict[str, float]] = {}
     for road in dict.fromkeys(roads):
         geometry = geometry_for(road)
         if len(geometry) < 2:
             continue
         cumulative = cumulative_miles(geometry)
-        measures = [
-            measure
-            for slug in slugs
-            for measure, offset in [
-                project_to_polyline(
-                    towns[slug]["lat"], towns[slug]["lon"], geometry, cumulative
-                )
-            ]
-            if offset <= ON_ROUTE_MILES
-        ]
-        if len(measures) >= 2:
-            spans[road] = [round(min(measures), 1), round(max(measures), 1)]
-    return spans
+        on_road: dict[str, float] = {}
+        for slug in slugs:
+            measure, offset = project_to_polyline(
+                towns[slug]["lat"], towns[slug]["lon"], geometry, cumulative
+            )
+            if offset <= ON_ROUTE_MILES:
+                on_road[slug] = round(measure, 1)
+        if on_road:
+            anchors[road] = on_road
+    return anchors
 
 
 def fetch_route(a: dict, b: dict) -> dict:
@@ -217,7 +216,7 @@ def build(output: Path = OUTPUT_FILE) -> dict:
         journeys[f"{slug_a}|{slug_b}"] = {
             "towns": ordered,
             "routes": via,
-            "spans": leg_spans(ordered, via, towns),
+            "anchors": leg_anchor_miles(ordered, via, towns),
             "miles": round(route["miles"], 1),
             "minutes": round(route["minutes"]),
         }
@@ -230,10 +229,10 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "Multi-highway journeys between catalogue towns, built by "
             "python -m pipeline.build_journeys from OSRM driving routes. For each "
             "town pair, the catalogue's weather anchors that fall along the drive, "
-            "in travel order, the highways it follows, and per highway the "
-            "[first, last] mile the drive covers on it (its span, on the same "
-            "measure axis as the crash bins). Committed so nothing depends on "
-            "OSRM at build/run time; re-run only when the catalogue's towns change."
+            "in travel order, the highways it follows, and per highway each "
+            "on-road stop's mile measure (on the same measure axis as the crash "
+            "bins). Committed so nothing depends on OSRM at build/run time; "
+            "re-run only when the catalogue's towns change."
         ),
         "towns": towns,
         "journeys": journeys,

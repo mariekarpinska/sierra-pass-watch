@@ -110,12 +110,14 @@ class CauseStat(CamelModel):
 
 class CrashBin(CamelModel):
     """One occupied per-mile bin (ADR-0007): mile `mile_bin` of `route_id`,
-    with what the record says happened there under the requested regime. The
-    lat/lon is the mean crash location in the bin - a representative point for
-    the map, not an exact crash site."""
+    with what the record says happened there under `regime` - the forecast
+    matched to this stretch of the drive, so the map popup can say which
+    weather the history belongs to. The lat/lon is the mean crash location in
+    the bin - a representative point for the map, not an exact crash site."""
 
     route_id: str
     mile_bin: int
+    regime: str
     lat: float
     lon: float
     crash_count: int
@@ -128,17 +130,16 @@ class CrashBin(CamelModel):
 
 
 class CrashPatternsResponse(CamelModel):
-    """GET /api/crash-patterns?from=&to=&regime=
+    """GET /api/crash-patterns?from=&to=&departure=
 
-    The crash record for a journey under one weather regime: journey-level
-    totals, the occupied per-mile bins for the map, and the top recorded
-    causes. Scoped to the mile span the drive covers on each highway (a leg
-    with no span keeps its whole corridor). Historical and descriptive only -
-    counts, dates and causes, never a judgement (test_forbidden_keys.py holds
-    the line).
+    The crash record for a journey, each stretch matched to its own forecast
+    regime: journey-level totals, the occupied per-mile bins for the map, and
+    the top recorded causes. Scoped to the mile span the drive covers on each
+    highway (a road with no anchors keeps its whole corridor). Historical and
+    descriptive only - counts, dates and causes, never a judgement
+    (test_forbidden_keys.py holds the line).
     """
 
-    regime: str
     route_ids: list[str]
     crash_count: int
     fatal_count: int

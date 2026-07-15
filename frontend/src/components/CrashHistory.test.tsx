@@ -52,7 +52,6 @@ const JOURNEY: JourneyResponse = {
 };
 
 const PATTERNS: CrashPatternsResponse = {
-  regime: "SNOW",
   routeIds: ["I-80", "US-50"],
   crashCount: 16,
   fatalCount: 1,
@@ -64,6 +63,7 @@ const PATTERNS: CrashPatternsResponse = {
     {
       routeId: "I-80",
       mileBin: 12,
+      regime: "SNOW",
       lat: 39.3163,
       lon: -120.3208,
       crashCount: 9,
@@ -75,6 +75,7 @@ const PATTERNS: CrashPatternsResponse = {
     {
       routeId: "I-80",
       mileBin: 20,
+      regime: "SNOW",
       lat: 39.32,
       lon: -120.2,
       crashCount: 2,
@@ -86,6 +87,7 @@ const PATTERNS: CrashPatternsResponse = {
     {
       routeId: "US-50",
       mileBin: 40,
+      regime: "CLEAR_DRY",
       lat: 38.81,
       lon: -120.03,
       crashCount: 5,
@@ -116,14 +118,18 @@ beforeEach(() => {
 });
 
 describe("CrashHistory", () => {
-  it("asks for the journey under the worst regime and renders the record", async () => {
+  it("asks for the journey's record and renders it", async () => {
     vi.spyOn(crashApi, "getCrashPatterns").mockResolvedValue(PATTERNS);
 
     render(<CrashHistory journey={JOURNEY} />);
 
-    // The worst stop (SNOW) wins over CLEAR_DRY as the regime to match; the
-    // journey is named by its towns and the server scopes it to the drive.
-    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith("colfax", "south-lake-tahoe", "SNOW");
+    // The journey is named by its towns and departure; the server matches
+    // each stretch to its own forecast, so no regime crosses the wire.
+    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith(
+      "colfax",
+      "south-lake-tahoe",
+      JOURNEY.departureUtc,
+    );
     expect(
       await screen.findByRole("heading", { name: /what the road remembers/i }),
     ).toBeInTheDocument();

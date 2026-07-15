@@ -13,17 +13,19 @@ causes across them (per-bin top-3 lists cannot be summed into an honest
 journey-level ranking, because everything below rank 3 is already gone).
 
 The regime to match is also a choice. A drive can be clear in the foothills
-and snowing at the pass; the record shown has to pick one label.
+and snowing at the pass; a single label for the whole drive would show the
+pass's snow record for stretches forecast clear.
 
 ## Decision
 
-One endpoint, `GET /api/crash-patterns?from=&to=&regime=`, composes the marts
-per request. The journey is named by its towns, exactly like `/api/journey`;
-the server resolves it against the same committed index, so the roads and the
-mile span the drive covers on each road come from one place, never from
-request input:
+One endpoint, `GET /api/crash-patterns?from=&to=&departure=`, composes the
+marts per request, **matching each stretch of the drive to its own forecast**.
+The journey is named by its towns and departure time, exactly like
+`/api/journey`; the server resolves it against the same committed index and
+samples the same forecast service, so the roads, the mile stretches and their
+regimes all come from one place, never from request input:
 
-- the occupied bins inside the journey's leg spans under that regime from
+- the occupied bins inside each stretch under that stretch's regime from
   `mart_crash_patterns` (each with its rank-1 cause from
   `mart_pattern_causes`, for the map popup);
 - the journey-level top causes with a GROUP BY over `mart_crash_conditions`,
@@ -32,24 +34,32 @@ request input:
 - totals (counts, fatality share, date bounds, the under-8 small-record flag)
   derived in code from the bins.
 
-Leg spans are computed at build time (`build_journeys.leg_spans`): each
-travelled road's span is the [first, last] mile bounded by the journey's own
-anchor towns, projected onto the road's committed polyline - the same measure
-axis the crash bins live on (ADR-0007). Both queries scope each road with one
-`unnest` join over the legs; a leg without a span matches its whole corridor.
+The stretches come from the committed journey index
+(`build_journeys.leg_anchor_miles`): each on-road anchor town's mile measure
+along the road's committed polyline - the same measure axis the crash bins
+live on (ADR-0007). Per request, `segment_legs` cuts each road at the
+midpoints between its anchors and labels each piece with its nearest anchor's
+departure-window regime; adjacent same-regime pieces merge, so a
+uniform-forecast road stays one leg. A road with one anchor keeps its whole
+corridor under that anchor's regime; a road with none keeps it under the
+journey's worst regime (over-including is the safe direction for a crash
+record). A stretch whose forecast is UNKNOWN matches nothing: presenting
+data gaps as weather would be a guess. Both queries scope every stretch with
+one `unnest` join over the legs.
 
-The frontend matches history against the **worst forecast regime along the
-journey** (REGIME_CODES is ordered worst-first), stated plainly in the copy.
 Exact regime equality, no "similar weather" blending: the classifier already
 is the similarity function, one label on the forecast and on every crash.
+Each bin in the response carries the regime it was matched under, so the map
+can say which weather a mark's history belongs to.
 
 This is the API's first database access since ADR-0009 deleted the last one.
 Reads go through a small psycopg pool that opens on the first crash request,
 so the app still boots (and every other endpoint works) without a database.
-The driver is deliberately the sync one, with the endpoint declared `def` so
-FastAPI runs it on a worker thread: async psycopg refuses Windows' default
-Proactor event loop, so it would not run on a Windows dev machine, and two
-tiny indexed reads gain nothing from being async.
+The driver is deliberately the sync one: async psycopg refuses Windows'
+default Proactor event loop, so it would not run on a Windows dev machine,
+and two tiny indexed reads gain nothing from being async. The endpoint is
+`async def` only for the forecast await; the store reads hop to the worker
+threadpool explicitly, keeping the sync driver off the event loop.
 
 ## Alternatives considered
 
@@ -81,8 +91,16 @@ tiny indexed reads gain nothing from being async.
   interchange is likewise uncounted. If the fallback ever misleads, the fix is
   spans measured from the OSRM drive geometry instead of the anchors, at the
   cost of retaining that geometry through the build.
-- One regime for the whole drive errs on the cautious side: snow at the pass
-  shows the snow record for every leg, including legs forecast clear.
+- Per-stretch matching is more relevant than one worst label, but no longer
+  uniformly cautious: a stretch forecast clear shows clear-weather history
+  even with snow at the pass, and clear-weather slices can dominate the
+  journey totals simply because most driving happens in clear weather. The
+  copy owns this ("matched to its own forecast").
+- The crash record now depends on the forecast as well as the database: the
+  endpoint samples the same fixed-host Open-Meteo client as `/api/journey`,
+  whose request usually pre-warms the 5-minute cache. An upstream failure
+  degrades stops to UNKNOWN, which shrinks (or empties) the matched record
+  rather than erroring.
 - The mock insight panel's elevation chart had no live data source (nothing in
   the stack measures elevation), so the live panel draws per-route crash
   density strips on the same mile axis instead.

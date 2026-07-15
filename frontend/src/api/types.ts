@@ -99,13 +99,15 @@ export interface CauseStat {
 
 /**
  * One occupied per-mile bin (ADR-0007): mile `mileBin` of `routeId`, with what
- * the record says happened there under the requested regime. The lat/lon is
- * the mean crash location inside the bin: a representative point for the map,
- * not an exact crash site.
+ * the record says happened there under `regime` — the forecast matched to
+ * this stretch of the drive, so the popup can say which weather the history
+ * belongs to. The lat/lon is the mean crash location inside the bin: a
+ * representative point for the map, not an exact crash site.
  */
 export interface CrashBin {
   routeId: string;
   mileBin: number;
+  regime: RegimeCode;
   lat: number;
   lon: number;
   crashCount: number;
@@ -118,16 +120,16 @@ export interface CrashBin {
 }
 
 /**
- * GET /api/crash-patterns?from=&to=&regime=
+ * GET /api/crash-patterns?from=&to=&departure=
  *
- * The crash record for a journey under one weather regime: journey-level
+ * The crash record for a journey, each stretch matched to its own forecast
+ * regime (each bin carries the regime it was matched under): journey-level
  * totals, the occupied per-mile bins for the map, and the top recorded
- * causes. Scoped to the mile span the drive covers on each highway (a leg
- * with a null span keeps its whole corridor). Descriptive only, like
+ * causes. Scoped to the mile span the drive covers on each highway (a road
+ * with no anchors keeps its whole corridor). Descriptive only, like
  * everything else in this contract.
  */
 export interface CrashPatternsResponse {
-  regime: RegimeCode;
   routeIds: string[];
   crashCount: number;
   fatalCount: number;

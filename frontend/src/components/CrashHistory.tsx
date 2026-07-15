@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getCrashPatterns } from '../api/crashPatterns'
-import type { CrashPatternsResponse, JourneyResponse, RegimeCode } from '../api/types'
-import { worstRegime, regimeProse } from '../lib/regime'
+import type { CrashPatternsResponse, JourneyResponse } from '../api/types'
+import { worstRegime } from '../lib/regime'
 import { CrashMapSection } from './CrashMapSection'
 import { InsightSection } from './InsightSection'
 
@@ -17,23 +17,21 @@ type Result =
   | { phase: 'error' }
 
 /**
- * Fetches the crash record for the journey's highways under the worst
- * forecast regime along the drive, and renders the two history sections from
- * it. Failure here never blocks the forecast above: the sections simply give
- * way to a one-line note.
+ * Fetches the crash record for the journey - the server matches each stretch
+ * of the drive to its own forecast regime - and renders the two history
+ * sections from it. Failure here never blocks the forecast above: the
+ * sections simply give way to a one-line note. worstRegime is only the gate:
+ * an all-UNKNOWN forecast has no weather to match, so there is no request.
  */
 export function CrashHistory({ journey }: Props) {
   const [result, setResult] = useState<Result>({ phase: 'loading' })
-  const regime: RegimeCode = worstRegime(journey.stops)
-  const routeIds = journey.via.map((leg) => leg.id)
+  const nothingToMatch = worstRegime(journey.stops) === 'UNKNOWN' || journey.via.length === 0
 
   useEffect(() => {
-    // An all-UNKNOWN forecast gives nothing to match history against, so
-    // there is no request to make (the render below explains instead).
-    if (regime === 'UNKNOWN' || routeIds.length === 0) return
+    if (nothingToMatch) return
     let cancelled = false
     setResult({ phase: 'loading' })
-    getCrashPatterns(journey.fromId, journey.toId, regime)
+    getCrashPatterns(journey.fromId, journey.toId, journey.departureUtc)
       .then((data) => {
         if (!cancelled) setResult({ phase: 'ok', data })
       })
@@ -43,11 +41,11 @@ export function CrashHistory({ journey }: Props) {
     return () => {
       cancelled = true
     }
-    // routeIds is derived from journey; keying on journey + regime covers it.
+    // nothingToMatch is derived from journey; keying on journey covers it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [journey, regime])
+  }, [journey])
 
-  if (regime === 'UNKNOWN' || routeIds.length === 0) {
+  if (nothingToMatch) {
     return (
       <p className="route-hint">
         The forecast came back without data, so there is nothing to match the
@@ -66,15 +64,15 @@ export function CrashHistory({ journey }: Props) {
     return (
       <p className="route-hint">
         The crash history could not be loaded right now. The forecast above
-        still stands; history recorded in {regimeProse(regime)} conditions will
-        be back when the service is.
+        still stands; the history matched to it will be back when the service
+        is.
       </p>
     )
   }
   return (
     <>
-      <InsightSection journey={journey} regime={regime} data={result.data} />
-      <CrashMapSection journey={journey} regime={regime} data={result.data} />
+      <InsightSection journey={journey} data={result.data} />
+      <CrashMapSection journey={journey} data={result.data} />
     </>
   )
 }

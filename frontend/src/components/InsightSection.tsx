@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CrashBin, CrashPatternsResponse, JourneyResponse, RegimeCode } from '../api/types'
+import type { CrashBin, CrashPatternsResponse, JourneyResponse } from '../api/types'
 import { haversine } from '../lib/data'
-import { regimeProse } from '../lib/regime'
 import { useReveal } from '../lib/useReveal'
 
 const W = 800
@@ -11,7 +10,6 @@ const MAX_STEM = 56
 
 interface Props {
   journey: JourneyResponse
-  regime: RegimeCode
   data: CrashPatternsResponse
 }
 
@@ -90,10 +88,9 @@ function nearestStopName(journey: JourneyResponse, bin: CrashBin): string {
   return best.name
 }
 
-export function InsightSection({ journey, regime, data }: Props) {
+export function InsightSection({ journey, data }: Props) {
   const sectionRef = useReveal<HTMLElement>(journey)
   const { strips, top } = useMemo(() => buildStrips(journey, data.bins), [journey, data.bins])
-  const prose = regimeProse(regime)
 
   // animate cause bars in from 0 on data change
   const [barsIn, setBarsIn] = useState(false)
@@ -110,11 +107,12 @@ export function InsightSection({ journey, regime, data }: Props) {
       <div className="section-head">
         <span className="kicker">The road's memory</span>
         <h2>
-          In <em>{prose}</em> conditions, this is what the road remembers
+          This is what the road remembers <em>along your drive</em>
         </h2>
         <p className="sub">
-          Your forecast trends toward <strong>{prose}</strong> along the drive. Below is only the
-          history recorded in those conditions on the stretch of each highway your route covers.
+          Each stretch of your drive is matched to its own forecast — snow history where snow is
+          expected, clear history where it looks clear. Below is only that matched history, on
+          the stretch of each highway your route covers.
         </p>
       </div>
 
@@ -153,15 +151,15 @@ export function InsightSection({ journey, regime, data }: Props) {
           <p className="insight-caption">
             {top ? (
               <>
-                In these conditions, crashes cluster a little more densely around{' '}
+                Crashes cluster a little more densely around{' '}
                 <span className="hotspot-tag">mile {top.mileBin} of {top.routeId}</span> near{' '}
                 {nearestStopName(journey, top)}, a good place to ease your speed and leave extra
                 following distance. Marks elsewhere are more evenly spread.
               </>
             ) : data.bins.length ? (
               <>
-                History on these roads is spread fairly evenly in these conditions; no single
-                stretch stands out. Steady attention throughout serves you best.
+                History matched to your forecast is spread fairly evenly along these roads; no
+                single stretch stands out. Steady attention throughout serves you best.
               </>
             ) : (
               <>
@@ -194,7 +192,8 @@ export function InsightSection({ journey, regime, data }: Props) {
           </ul>
           <p className="insight-caption soft">
             Based on {data.crashCount} recorded crash{data.crashCount === 1 ? '' : 'es'} along
-            your route in similar weather{sinceYear ? ` since ${sinceYear}` : ''}
+            your route in weather like each stretch&apos;s forecast
+            {sinceYear ? ` since ${sinceYear}` : ''}
             {data.pctFatal !== null ? `; ${data.pctFatal}% were fatal` : ''}.
             {data.smallSample && data.crashCount > 0 && (
               <> That is a small record, so read it as context rather than a pattern.</>

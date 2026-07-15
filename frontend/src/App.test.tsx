@@ -148,10 +148,14 @@ describe("App - plan a journey and show the live forecast", () => {
       "south-lake-tahoe",
       expect.any(String),
     );
-    // The crash history kicks off right below, for this journey under the
-    // worst forecast regime (the one SNOW stop here).
+    // The crash history kicks off right below for this journey; the server
+    // matches each stretch to its own forecast from the departure time.
     expect(await screen.findByText(/looking up the road/i)).toBeInTheDocument();
-    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith("colfax", "south-lake-tahoe", "SNOW");
+    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith(
+      "colfax",
+      "south-lake-tahoe",
+      JOURNEY.departureUtc,
+    );
   });
 
   it("blocks planning when start and destination are the same", async () => {

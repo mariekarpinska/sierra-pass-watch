@@ -1,12 +1,11 @@
 import L from 'leaflet'
-import type { CrashPatternsResponse, JourneyResponse, RegimeCode } from '../api/types'
+import type { CrashPatternsResponse, JourneyResponse } from '../api/types'
 import { regimeProse } from '../lib/regime'
 import { useReveal } from '../lib/useReveal'
 import { useLeafletMap } from '../lib/useLeafletMap'
 
 interface Props {
   journey: JourneyResponse
-  regime: RegimeCode
   data: CrashPatternsResponse
 }
 
@@ -22,7 +21,7 @@ function dayLabel(iso: string): string {
  * and a single mark per mile stays readable where hundreds of points would
  * not. The basemap itself shows the roads; the journey's stops anchor the view.
  */
-export function CrashMapSection({ journey, regime, data }: Props) {
+export function CrashMapSection({ journey, data }: Props) {
   const sectionRef = useReveal<HTMLElement>(journey)
 
   const mapEl = useLeafletMap({
@@ -48,6 +47,7 @@ export function CrashMapSection({ journey, regime, data }: Props) {
         marker.bindPopup(
           `<span class="pop-h">${n} crash${n > 1 ? 'es' : ''} in similar weather</span>
           <div class="pop-row"><span>Where</span><b>mile ${bin.mileBin} of ${bin.routeId}</b></div>
+          <div class="pop-row"><span>Forecast here</span><b>${regimeProse(bin.regime)}</b></div>
           <div class="pop-row"><span>Most common</span><b>${bin.topCause ?? 'Unknown'}</b></div>
           <div class="pop-row"><span>Years</span><b>${years}</b></div>`,
         )
@@ -69,9 +69,9 @@ export function CrashMapSection({ journey, regime, data }: Props) {
         <span className="kicker">The map, remembered</span>
         <h2>Where similar days have asked for extra care</h2>
         <p className="sub">
-          Each mark is a mile of your route with recorded crashes in weather like your forecast.
-          Larger, denser marks mean more history clustered there, nothing more. Read it as a place
-          to ease off, not a warning to turn back.
+          Each mark is a mile of your route with recorded crashes in weather like that stretch&apos;s
+          own forecast. Larger, denser marks mean more history clustered there, nothing more. Read
+          it as a place to ease off, not a warning to turn back.
         </p>
       </div>
       <div className="crashmap-wrap">
@@ -82,8 +82,8 @@ export function CrashMapSection({ journey, regime, data }: Props) {
             <span>crashes on record</span>
           </div>
           <div className="crashmap-cond">
-            Showing history recorded in <b>{regimeProse(regime)}</b> conditions, the worst
-            forecast along your drive for <b>{dayLabel(journey.departureUtc)}</b>.
+            Showing history recorded in the conditions forecast for each stretch of your drive
+            on <b>{dayLabel(journey.departureUtc)}</b>.
           </div>
           <div className="scale-legend">
             <span className="scale-h">Mark size</span>

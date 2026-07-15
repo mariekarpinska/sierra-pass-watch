@@ -54,7 +54,6 @@ const JOURNEY: JourneyResponse = {
 };
 
 const CRASH_PATTERNS: CrashPatternsResponse = {
-  regime: "SNOW",
   routeIds: ["I-80", "US-50"],
   crashCount: 16,
   fatalCount: 1,
@@ -66,6 +65,7 @@ const CRASH_PATTERNS: CrashPatternsResponse = {
     {
       routeId: "I-80",
       mileBin: 12,
+      regime: "SNOW",
       lat: 39.31,
       lon: -120.32,
       crashCount: 9,
@@ -112,13 +112,14 @@ describe("getJourney", () => {
 });
 
 describe("getCrashPatterns", () => {
-  it("names the journey by its towns plus the regime", async () => {
+  it("names the journey by its towns and departure time", async () => {
     mockGet.mockResolvedValue({ data: CRASH_PATTERNS });
 
-    const patterns = await getCrashPatterns("colfax", "south-lake-tahoe", "SNOW");
+    const departure = "2026-01-12T15:00:00.000Z";
+    const patterns = await getCrashPatterns("colfax", "south-lake-tahoe", departure);
 
     expect(mockGet).toHaveBeenCalledWith("/api/crash-patterns", {
-      params: { from: "colfax", to: "south-lake-tahoe", regime: "SNOW" },
+      params: { from: "colfax", to: "south-lake-tahoe", departure },
     });
     expect(patterns.crashCount).toBe(16);
     expect(patterns.bins[0].mileBin).toBe(12);
