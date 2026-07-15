@@ -29,7 +29,7 @@ const JOURNEY: JourneyResponse = {
   totalMinutes: 130,
   stops: [
     {
-      waypoint: { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533 },
+      waypoint: { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533, elevationFt: 2421 },
       regime: "CLEAR_DRY",
       temperatureHighF: 40,
       temperatureLowF: 30,
@@ -39,7 +39,7 @@ const JOURNEY: JourneyResponse = {
       shortForecast: "Clear",
     },
     {
-      waypoint: { id: "donner-summit", name: "Donner Summit", lat: 39.3163, lon: -120.3208 },
+      waypoint: { id: "donner-summit", name: "Donner Summit", lat: 39.3163, lon: -120.3208, elevationFt: 6867 },
       regime: "SNOW",
       temperatureHighF: 28,
       temperatureLowF: 20,

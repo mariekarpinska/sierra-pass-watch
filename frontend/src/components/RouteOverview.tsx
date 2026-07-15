@@ -1,27 +1,66 @@
+import { useEffect, useState } from 'react'
 import L from 'leaflet'
-import { TOWNS, townMile, type Route } from '../lib/data'
+import { getJourneyPath } from '../api/journeyPath'
+import type { JourneyResponse } from '../api/types'
 import { useReveal } from '../lib/useReveal'
 import { useLeafletMap } from '../lib/useLeafletMap'
 
 interface Props {
-  route: Route
+  journey: JourneyResponse
 }
 
-export function RouteOverview({ route }: Props) {
-  const sectionRef = useReveal<HTMLElement>(route)
+/**
+ * "Your passage": the drive itself, before any weather or history. The map
+ * draws the real road line (the committed route polylines sliced to the
+ * journey's driven miles, from /api/journey-path) with the anchor towns that
+ * everything below keys on; the panel gives the drive's vital numbers.
+ * Deliberately free of crash data: this section says where you are going,
+ * the sections after it say what the road remembers there.
+ */
+export function RouteOverview({ journey }: Props) {
+  const sectionRef = useReveal<HTMLElement>(journey)
+  // The road line arrives separately (it is a few thousand points, so it is
+  // not part of the journey payload). null = still loading; [] = failed,
+  // which quietly degrades: the stops still mark the map.
+  const [paths, setPaths] = useState<[number, number][][] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setPaths(null)
+    getJourneyPath(journey.fromId, journey.toId)
+      .then((response) => {
+        if (!cancelled) setPaths(response.paths)
+      })
+      .catch(() => {
+        if (!cancelled) setPaths([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [journey])
 
   const mapEl = useLeafletMap({
     mapOptions: { scrollWheelZoom: false, zoomControl: true },
-    deps: [route],
+    deps: [journey, paths],
     draw: (layer, map) => {
-      const line = L.polyline(route.path, { color: '#E0A94A', weight: 5, opacity: 0.95, lineCap: 'round' }).addTo(layer)
-      L.polyline(route.path, { color: '#ECE3CE', weight: 5, opacity: 0.28, dashArray: '1 12', lineCap: 'round' }).addTo(layer)
-      route.order.forEach((i, pos) => {
-        const t = TOWNS[i]
+      const points: [number, number][] = journey.stops.map((s) => [
+        s.waypoint.lat,
+        s.waypoint.lon,
+      ])
+      for (const path of paths ?? []) {
+        L.polyline(path, { color: '#E0A94A', weight: 5, opacity: 0.95, lineCap: 'round' }).addTo(layer)
+        L.polyline(path, { color: '#ECE3CE', weight: 5, opacity: 0.28, dashArray: '1 12', lineCap: 'round' }).addTo(layer)
+        points.push(...path)
+      }
+      journey.stops.forEach((stop, pos) => {
         const isStart = pos === 0
-        const isEnd = pos === route.order.length - 1
+        const isEnd = pos === journey.stops.length - 1
         const color = isStart ? '#9DB183' : isEnd ? '#E0A94A' : '#7FA6B4'
-        L.circleMarker([t.lat, t.lng], {
+        const elevation =
+          stop.waypoint.elevationFt !== null
+            ? `<div class="pop-row"><span>Elevation</span><b>${stop.waypoint.elevationFt.toLocaleString()} ft</b></div>`
+            : ''
+        L.circleMarker([stop.waypoint.lat, stop.waypoint.lon], {
           radius: isStart || isEnd ? 9 : 6,
           color: '#151912',
           weight: 2.5,
@@ -29,22 +68,24 @@ export function RouteOverview({ route }: Props) {
           fillOpacity: 1,
         })
           .addTo(layer)
-          .bindPopup(
-            `<span class="pop-h">${t.id}</span><div class="pop-row"><span>Mile ${Math.round(townMile(route, i))}</span><b>${t.el.toLocaleString()} ft</b></div>`,
-          )
+          .bindPopup(`<span class="pop-h">${stop.waypoint.name}</span>${elevation}`)
       })
-      map.fitBounds(line.getBounds().pad(0.18))
+      if (points.length) map.fitBounds(L.latLngBounds(points).pad(0.18))
     },
   })
 
-  const start = TOWNS[route.startIdx]
-  const end = TOWNS[route.endIdx]
-  const peak = Math.max(...route.order.map((i) => TOWNS[i].el))
+  if (journey.stops.length === 0) return null
+  const start = journey.stops[0].waypoint
+  const end = journey.stops[journey.stops.length - 1].waypoint
+  const elevations = journey.stops
+    .map((s) => s.waypoint.elevationFt)
+    .filter((e): e is number => e !== null)
+  const peak = elevations.length ? Math.max(...elevations) : null
   const stats: Array<[string, string]> = [
-    ['Distance', `${Math.round(route.totalMiles)} mi`],
-    ['Waypoints', `${route.order.length} stops`],
-    ['High point', `${peak.toLocaleString()} ft`],
-    ['Est. drive', `${route.estDriveMinutes} min`],
+    ['Distance', `${Math.round(journey.totalMiles)} mi`],
+    ['Waypoints', `${journey.stops.length} stops`],
+    ['High point', peak !== null ? `${peak.toLocaleString()} ft` : '—'],
+    ['Est. drive', `${journey.totalMinutes} min`],
   ]
 
   return (
@@ -52,7 +93,7 @@ export function RouteOverview({ route }: Props) {
       <div className="overview-panel">
         <span className="kicker">Your passage</span>
         <h2>
-          {start.id} <span className="arrow">→</span> {end.id}
+          {start.name} <span className="arrow">→</span> {end.name}
         </h2>
         <div className="route-stats">
           {stats.map(([label, value]) => (
@@ -63,8 +104,9 @@ export function RouteOverview({ route }: Props) {
           ))}
         </div>
         <p className="overview-note">
-          Distances and mile-markers below are measured along this line. Everything that follows —
-          weather, history, hotspots — is filtered to <em>this</em> route only.
+          The line is the road your drive follows, and only the miles it follows. Everything on
+          this page — the forecast above, the history below — is matched to <em>this</em> drive
+          only.
         </p>
       </div>
       <div className="overview-map">

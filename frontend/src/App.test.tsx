@@ -4,13 +4,20 @@ import { App } from "./App";
 import * as healthApi from "./api/health";
 import * as townsApi from "./api/towns";
 import * as journeyApi from "./api/journey";
+import * as journeyPathApi from "./api/journeyPath";
 import * as crashApi from "./api/crashPatterns";
 import type { JourneyResponse, Waypoint } from "./api/types";
 
 vi.mock("./api/health", { spy: true });
 vi.mock("./api/towns", { spy: true });
 vi.mock("./api/journey", { spy: true });
+vi.mock("./api/journeyPath", { spy: true });
 vi.mock("./api/crashPatterns", { spy: true });
+// jsdom implements none of what a real Leaflet map needs (RouteOverview
+// mounts one as soon as a journey renders).
+vi.mock("./lib/useLeafletMap", () => ({
+  useLeafletMap: () => ({ current: null }),
+}));
 
 // The backend status indicator (footer) calls getHealth on mount. These tests
 // drive that call directly.
@@ -46,9 +53,9 @@ describe("App - backend health round-trip", () => {
 });
 
 const TOWNS: Waypoint[] = [
-  { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533 },
-  { id: "truckee", name: "Truckee", lat: 39.328, lon: -120.1833 },
-  { id: "south-lake-tahoe", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
+  { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533, elevationFt: 2421 },
+  { id: "truckee", name: "Truckee", lat: 39.328, lon: -120.1833, elevationFt: 5820 },
+  { id: "south-lake-tahoe", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772, elevationFt: 6270 },
 ];
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",
@@ -111,6 +118,8 @@ describe("App - plan a journey and show the live forecast", () => {
     // Keep the crash-history call pending too: its loaded state (Leaflet map
     // and all) is covered by CrashHistory.test.tsx, not here.
     vi.spyOn(crashApi, "getCrashPatterns").mockReturnValue(new Promise(() => {}));
+    // Same for the route overview's road line (RouteOverview.test.tsx owns it).
+    vi.spyOn(journeyPathApi, "getJourneyPath").mockReturnValue(new Promise(() => {}));
   });
 
   // The selects mount empty and fill in after getTowns resolves; wait for the
@@ -148,6 +157,8 @@ describe("App - plan a journey and show the live forecast", () => {
       "south-lake-tahoe",
       expect.any(String),
     );
+    // The route overview sits between the forecast and the history.
+    expect(screen.getByText(/the line is the road your drive follows/i)).toBeInTheDocument();
     // The crash history kicks off right below for this journey; the server
     // matches each stretch to its own forecast from the departure time.
     expect(await screen.findByText(/looking up the road/i)).toBeInTheDocument();

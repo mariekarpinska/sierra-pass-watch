@@ -20,8 +20,8 @@ import { getCrashPatterns } from "./crashPatterns";
 
 // Sample responses the fake will return, in the same shape the real API sends.
 const TOWNS: Waypoint[] = [
-  { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533 },
-  { id: "south-lake-tahoe", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772 },
+  { id: "colfax", name: "Colfax", lat: 39.1002, lon: -120.9533, elevationFt: 2421 },
+  { id: "south-lake-tahoe", name: "South Lake Tahoe", lat: 38.9399, lon: -119.9772, elevationFt: 6270 },
 ];
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",

@@ -41,6 +41,9 @@ export interface Waypoint {
   name: string;
   lat: number;
   lon: number;
+  /** Elevation in feet at the town's coordinate — a catalogue fact, fetched
+   *  once at build time. Null only for pre-elevation index files. */
+  elevationFt: number | null;
 }
 
 /**
@@ -142,6 +145,17 @@ export interface CrashPatternsResponse {
   lastCrashDate: string | null;
   bins: CrashBin[];
   topCauses: CauseStat[];
+}
+
+/**
+ * GET /api/journey-path?from=&to=
+ *
+ * The drive's road line for the route-overview map: one [lat, lon] path per
+ * continuously-driven stretch (the committed route polylines sliced to the
+ * journey's driven miles). Purely geometric.
+ */
+export interface JourneyPathResponse {
+  paths: [number, number][][];
 }
 
 /**
