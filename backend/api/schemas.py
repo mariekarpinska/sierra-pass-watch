@@ -90,6 +90,68 @@ class JourneyLeg(CamelModel):
     name: str
     seasonal: bool
     note: str
+    # The [first, last] mile bin the drive covers on this road (the road's
+    # own measure axis, ADR-0007), from the drive's own geometry at build
+    # time. None when no driven range is known (a spur with no polyline); the
+    # crash record then covers the road's whole corridor.
+    span: tuple[float, float] | None = None
+
+
+class CauseStat(CamelModel):
+    """One recorded cause and its share of the matched crashes. `cause` is the
+    normalized CCRS taxonomy label from the warehouse (e.g. "Unsafe Speed")."""
+
+    cause: str
+    crash_count: int
+    # Share of all matched crashes, 0-100, rounded to a whole number.
+    pct: int
+
+
+class CrashBin(CamelModel):
+    """One occupied per-mile bin (ADR-0007): mile `mile_bin` of `route_id`,
+    with what the record says happened there under `regime` - the forecast
+    matched to this stretch of the drive, so the map popup can say which
+    weather the history belongs to. The lat/lon is the mean crash location in
+    the bin - a representative point for the map, not an exact crash site."""
+
+    route_id: str
+    mile_bin: int
+    regime: str
+    lat: float
+    lon: float
+    crash_count: int
+    fatal_count: int
+    # The bin's most common recorded cause (rank 1 of the top-3 mart).
+    top_cause: str | None
+    # ISO dates bounding this bin's record.
+    first_crash_date: str
+    last_crash_date: str
+
+
+class CrashPatternsResponse(CamelModel):
+    """GET /api/crash-patterns?from=&to=&departure=
+
+    The crash record for a journey, each stretch matched to its own forecast
+    regime: journey-level totals, the occupied per-mile bins for the map, and
+    the top recorded causes. Scoped to the mile span the drive covers on each
+    highway (a road with no anchors keeps its whole corridor). Historical and
+    descriptive only - counts, dates and causes, never a judgement
+    (test_forbidden_keys.py holds the line).
+    """
+
+    route_ids: list[str]
+    crash_count: int
+    fatal_count: int
+    # 0-100, one decimal. None when crash_count is 0 (no share of nothing).
+    pct_fatal: float | None
+    # True below the same <8 threshold the marts flag; the UI must present the
+    # record as context, not a pattern (ADR-0007).
+    small_sample: bool
+    # ISO dates bounding the whole matched record, null when it is empty.
+    first_crash_date: str | None
+    last_crash_date: str | None
+    bins: list[CrashBin]
+    top_causes: list[CauseStat]
 
 
 class JourneyResponse(CamelModel):

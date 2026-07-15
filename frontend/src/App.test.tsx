@@ -4,11 +4,13 @@ import { App } from "./App";
 import * as healthApi from "./api/health";
 import * as townsApi from "./api/towns";
 import * as journeyApi from "./api/journey";
+import * as crashApi from "./api/crashPatterns";
 import type { JourneyResponse, Waypoint } from "./api/types";
 
 vi.mock("./api/health", { spy: true });
 vi.mock("./api/towns", { spy: true });
 vi.mock("./api/journey", { spy: true });
+vi.mock("./api/crashPatterns", { spy: true });
 
 // The backend status indicator (footer) calls getHealth on mount. These tests
 // drive that call directly.
@@ -52,8 +54,20 @@ const JOURNEY: JourneyResponse = {
   fromId: "colfax",
   toId: "south-lake-tahoe",
   via: [
-    { id: "I-80", name: "Donner Pass", seasonal: false, note: "Only freeway across the range" },
-    { id: "US-50", name: "Echo Summit", seasonal: false, note: "Main South Tahoe approach" },
+    {
+      id: "I-80",
+      name: "Donner Pass",
+      seasonal: false,
+      note: "Only freeway across the range",
+      span: [0, 54],
+    },
+    {
+      id: "US-50",
+      name: "Echo Summit",
+      seasonal: false,
+      note: "Main South Tahoe approach",
+      span: null,
+    },
   ],
   departureUtc: "2026-01-12T15:00:00+00:00",
   generatedAtUtc: "2026-01-12T15:02:00+00:00",
@@ -94,6 +108,9 @@ describe("App - plan a journey and show the live forecast", () => {
     vi.spyOn(healthApi, "getHealth").mockReturnValue(new Promise(() => {}));
     vi.spyOn(townsApi, "getTowns").mockResolvedValue(TOWNS);
     vi.spyOn(journeyApi, "getJourney").mockResolvedValue(JOURNEY);
+    // Keep the crash-history call pending too: its loaded state (Leaflet map
+    // and all) is covered by CrashHistory.test.tsx, not here.
+    vi.spyOn(crashApi, "getCrashPatterns").mockReturnValue(new Promise(() => {}));
   });
 
   // The selects mount empty and fill in after getTowns resolves; wait for the
@@ -130,6 +147,14 @@ describe("App - plan a journey and show the live forecast", () => {
       "colfax",
       "south-lake-tahoe",
       expect.any(String),
+    );
+    // The crash history kicks off right below for this journey; the server
+    // matches each stretch to its own forecast from the departure time.
+    expect(await screen.findByText(/looking up the road/i)).toBeInTheDocument();
+    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith(
+      "colfax",
+      "south-lake-tahoe",
+      JOURNEY.departureUtc,
     );
   });
 

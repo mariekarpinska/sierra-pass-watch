@@ -1,11 +1,11 @@
-// Tests for the typed API fetchers (getTowns, getJourney). They check that
-// each fetcher calls the right URL, passes the right params, and hands back
-// the data. There is no real backend here: we replace the axios client with a
-// fake, so nothing leaves the test process.
+// Tests for the typed API fetchers (getTowns, getJourney, getCrashPatterns).
+// They check that each fetcher calls the right URL, passes the right params,
+// and hands back the data. There is no real backend here: we replace the axios
+// client with a fake, so nothing leaves the test process.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import golden from "../../../shared/weather-regime-cases.json";
 import { REGIME_CODES } from "./types";
-import type { JourneyResponse, Waypoint } from "./types";
+import type { CrashPatternsResponse, JourneyResponse, Waypoint } from "./types";
 
 // Replace the real axios client (./client) with a fake whose `get` is a spy we
 // control. This line runs before the imports below, so the fetchers pick up the
@@ -16,6 +16,7 @@ vi.mock("./client", () => ({ api: { get: vi.fn() } }));
 import { api } from "./client";
 import { getTowns } from "./towns";
 import { getJourney } from "./journey";
+import { getCrashPatterns } from "./crashPatterns";
 
 // Sample responses the fake will return, in the same shape the real API sends.
 const TOWNS: Waypoint[] = [
@@ -25,7 +26,15 @@ const TOWNS: Waypoint[] = [
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",
   toId: "south-lake-tahoe",
-  via: [{ id: "I-80", name: "Donner Pass", seasonal: false, note: "Only freeway across the range" }],
+  via: [
+    {
+      id: "I-80",
+      name: "Donner Pass",
+      seasonal: false,
+      note: "Only freeway across the range",
+      span: [0, 54],
+    },
+  ],
   departureUtc: "2026-01-12T15:00:00+00:00",
   generatedAtUtc: "2026-01-12T15:02:00+00:00",
   totalMiles: 94.2,
@@ -42,6 +51,31 @@ const JOURNEY: JourneyResponse = {
       shortForecast: "Snow",
     },
   ],
+};
+
+const CRASH_PATTERNS: CrashPatternsResponse = {
+  routeIds: ["I-80", "US-50"],
+  crashCount: 16,
+  fatalCount: 1,
+  pctFatal: 6.2,
+  smallSample: false,
+  firstCrashDate: "2016-06-09",
+  lastCrashDate: "2025-12-20",
+  bins: [
+    {
+      routeId: "I-80",
+      mileBin: 12,
+      regime: "SNOW",
+      lat: 39.31,
+      lon: -120.32,
+      crashCount: 9,
+      fatalCount: 1,
+      topCause: "Unsafe Speed",
+      firstCrashDate: "2017-01-03",
+      lastCrashDate: "2025-12-20",
+    },
+  ],
+  topCauses: [{ cause: "Unsafe Speed", crashCount: 10, pct: 62 }],
 };
 
 // A typed handle to the fake `get`, so we can set what it returns and check how
@@ -77,6 +111,21 @@ describe("getJourney", () => {
   });
 });
 
+describe("getCrashPatterns", () => {
+  it("names the journey by its towns and departure time", async () => {
+    mockGet.mockResolvedValue({ data: CRASH_PATTERNS });
+
+    const departure = "2026-01-12T15:00:00.000Z";
+    const patterns = await getCrashPatterns("colfax", "south-lake-tahoe", departure);
+
+    expect(mockGet).toHaveBeenCalledWith("/api/crash-patterns", {
+      params: { from: "colfax", to: "south-lake-tahoe", departure },
+    });
+    expect(patterns.crashCount).toBe(16);
+    expect(patterns.bins[0].mileBin).toBe(12);
+  });
+});
+
 // REGIME_CODES is a hand-written mirror of pipeline/regime.py's REGIMES. The
 // shared golden file exercises every regime, so set-equality against its
 // expected labels catches a vocabulary change (a regime added, renamed or
@@ -104,9 +153,11 @@ describe("no safety judgement in the contract", () => {
     return [];
   };
 
-  it("towns and the journey carry no score/rating/verdict keys", () => {
+  it("towns, the journey and the crash record carry no score/rating/verdict keys", () => {
     // Gather every key name from all sample payloads, lower-cased.
-    const all = [...keys(TOWNS), ...keys(JOURNEY)].map((k) => k.toLowerCase());
+    const all = [...keys(TOWNS), ...keys(JOURNEY), ...keys(CRASH_PATTERNS)].map((k) =>
+      k.toLowerCase(),
+    );
 
     // None of them should contain a forbidden word.
     expect(all.filter((k) => FORBIDDEN.some((word) => k.includes(word)))).toEqual([]);

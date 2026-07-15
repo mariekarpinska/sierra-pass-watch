@@ -263,8 +263,25 @@ section{ position:relative; }
 .insight .section-head{ margin-bottom:2rem; }
 .insight-grid{ max-width:min(1200px,92vw); margin:0 auto; padding:0 clamp(1rem,4vw,3rem); display:grid; grid-template-columns:1.4fr 1fr; gap:2.4rem; align-items:start; }
 .insight-col{ background:var(--card); border:1px solid var(--line); border-radius:18px; padding:1.6rem; box-shadow:var(--shadow-sm); }
+.route-strip{ margin-bottom:1.1rem; position:relative; }
+/* The strip's hover popup: same card the leaflet popup draws (rounded, shadowed,
+   header + label/value rows) in translucent ochre with dark-yellow text. */
+.strip-pop{
+  position:absolute; z-index:6; bottom:calc(100% + .35rem); transform:translateX(-50%);
+  min-width:240px; padding:.8rem 1rem; border-radius:12px; pointer-events:none;
+  background:rgba(224,169,74,.16); border:1px solid rgba(224,169,74,.38);
+  backdrop-filter:blur(10px); box-shadow:var(--shadow-md);
+}
+.strip-pop .pop-h{ font-family:var(--serif); font-weight:600; font-size:.98rem; display:block; margin-bottom:.3rem; color:var(--amber); }
+.strip-pop .pop-row{ display:flex; justify-content:space-between; gap:1rem; font-family:var(--mono); font-size:.74rem; color:var(--amber-deep); }
+.strip-pop .pop-row b{ color:var(--amber); font-weight:600; }
+.strip-name{ display:block; font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--granite); margin-bottom:.4rem; }
 .profile-wrap{ background:linear-gradient(180deg,#232A20,#1A1F16); border-radius:12px; overflow:hidden; border:1px solid var(--line-soft); }
 .profile{ width:100%; height:auto; display:block; }
+.profile g{ cursor:help; outline:none; } /* each stem pops the mile's card on hover or focus */
+/* Keyboard focus gets its own indicator (the default outline box reads oddly
+   on a bare svg group): the focused stem's dot lights up in ochre. */
+.profile g:focus-visible circle{ stroke:var(--amber); stroke-width:3; }
 .profile-axis{ display:flex; justify-content:space-between; margin-top:.5rem; font-family:var(--mono); font-size:.66rem; color:var(--granite); }
 .insight-caption{ margin-top:1.1rem; font-size:.95rem; line-height:1.6; color:var(--ink); }
 .insight-caption.soft{ color:var(--ink-soft); font-size:.85rem; }
@@ -291,9 +308,10 @@ section{ position:relative; }
 .scale-h{ font-size:.72rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--granite); display:block; margin-bottom:.7rem; }
 .scale-row{ display:flex; align-items:center; gap:.7rem; margin-bottom:.6rem; font-size:.82rem; color:var(--ink-soft); }
 .scale-dot{ display:block; border-radius:50%; background:rgba(157,177,131,.32); border:1.5px solid var(--sage); flex:none; }
-.scale-dot.s1{ width:10px; height:10px; }
-.scale-dot.s2{ width:17px; height:17px; }
-.scale-dot.s3{ width:26px; height:26px; }
+.scale-dot.s1{ width:7px; height:7px; }
+.scale-dot.s2{ width:13px; height:13px; }
+.scale-dot.s3{ width:22px; height:22px; }
+.scale-dot.densest{ background:rgba(224,169,74,.5); border-color:var(--amber); }
 .leaflet-popup-content-wrapper{ border-radius:12px; background:var(--card); color:var(--ink); box-shadow:var(--shadow-md); }
 .leaflet-popup-tip{ background:var(--card); }
 .leaflet-popup-content{ font-family:var(--sans); font-size:.84rem; color:var(--ink); margin:.8rem 1rem; }

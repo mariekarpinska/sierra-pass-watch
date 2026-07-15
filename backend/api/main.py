@@ -2,9 +2,8 @@
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
 field, and only what the UI consumes exists: /api/health, /api/towns,
-/api/journey. Later branches add crash-patterns, hotspots and the alerts feed,
-each bringing its own contract (and the database access it needs) when it
-lands.
+/api/journey, /api/crash-patterns. A later branch adds the alerts feed,
+bringing its own contract when it lands.
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -20,19 +19,34 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import Depends, FastAPI, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
+from api.crashes import (
+    CrashHistoryStore,
+    PostgresCrashHistoryStore,
+    build_crash_patterns,
+    get_crash_store,
+    segment_legs,
+)
 from api.journeys import JourneyIndex, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
-from api.schemas import Health, JourneyLeg, JourneyResponse, Waypoint
+from api.schemas import (
+    CrashPatternsResponse,
+    Health,
+    JourneyLeg,
+    JourneyResponse,
+    Waypoint,
+)
 from api.weather import (
     ForecastService,
     OpenMeteoForecastProvider,
     get_forecast_service,
     parse_departure,
+    worst_regime,
 )
 
 log = logging.getLogger(__name__)
@@ -64,10 +78,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.forecast_service = ForecastService(
             provider=OpenMeteoForecastProvider(app.state.open_meteo_client),
         )
+        # Crash history is the one thing served from Postgres (the dbt marts).
+        # The store's pool opens on the first crash request, not here, so the
+        # app still starts (and every other endpoint works) with no database.
+        app.state.crash_store = PostgresCrashHistoryStore(settings)
         try:
             yield
         finally:
             await app.state.open_meteo_client.aclose()
+            app.state.crash_store.close()
 
     app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
 
@@ -149,7 +168,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # the UI can name the roads and warn about passes that close.
         routes_by_id = {route.id: route for route in catalog.routes}
         via = [
-            JourneyLeg(id=r.id, name=r.name, seasonal=r.seasonal, note=r.note)
+            JourneyLeg(
+                id=r.id,
+                name=r.name,
+                seasonal=r.seasonal,
+                note=r.note,
+                span=resolved.span_for(r.id),
+            )
             for road in resolved.via
             if (r := routes_by_id.get(road)) is not None
         ]
@@ -163,6 +188,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total_minutes=resolved.minutes,
             stops=stops,
         )
+
+    # The crash record for a journey, each stretch matched to its own
+    # forecast: totals, occupied per-mile bins, top causes (from the dbt
+    # marts, composed per request - ADR-0010). The journey is named by its
+    # towns, exactly like /api/journey, and the server resolves it against the
+    # same committed index and samples the same forecast service - so the
+    # roads, the mile stretches and their regimes all come from one place,
+    # never from request input. Missing/invalid params are a 400; an unknown
+    # town or an unbuilt pair is a 404, mirroring /api/journey.
+    # `async def` for the forecast await; the two store reads hop to the
+    # worker threadpool explicitly, which is what lets them block on the sync
+    # database driver without stalling the event loop (see crashes.py for why
+    # the driver is sync).
+    @app.get("/api/crash-patterns", response_model=CrashPatternsResponse)
+    async def crash_patterns(
+        from_: str | None = Query(default=None, alias="from"),
+        to: str | None = None,
+        departure: str | None = None,
+        store: CrashHistoryStore = Depends(get_crash_store),
+        index: JourneyIndex = Depends(get_journey_index),
+        service: ForecastService = Depends(get_forecast_service),
+    ):
+        if not from_ or not to or not departure:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "from, to and departure are required"},
+            )
+        if from_ == to:
+            return JSONResponse(
+                status_code=400, content={"error": "from and to must be different towns"}
+            )
+        try:
+            departure_at = parse_departure(departure)
+        except ValueError:
+            return JSONResponse(
+                status_code=400, content={"error": "departure must be an ISO 8601 time"}
+            )
+        resolved = index.resolve(from_, to)
+        if resolved is None:
+            return JSONResponse(
+                status_code=404, content={"error": "unknown town or journey"}
+            )
+        # Each stop's departure-window forecast; the journey request just made
+        # the same calls, so the service's 5-minute cache usually answers.
+        stops = await service.forecast_towns(resolved.stops, departure_at)
+        regimes = {stop.waypoint.id: stop.regime for stop in stops}
+        legs = segment_legs(
+            resolved.via,
+            resolved.driven,
+            resolved.anchors,
+            regimes,
+            fallback=worst_regime(list(regimes.values())),
+        )
+        route_ids = list(dict.fromkeys(resolved.via))
+        if not legs:
+            # Nothing but UNKNOWN forecasts: there is no weather to match, and
+            # an empty record would read as "a quiet road" when the truth is
+            # "the forecast is unavailable". Say so: the client's error path
+            # already presents exactly that ("back when the service is").
+            return JSONResponse(
+                status_code=503,
+                content={"error": "no forecast to match the crash history against"},
+            )
+        bins = await run_in_threadpool(store.bins, legs)
+        causes = await run_in_threadpool(store.causes, legs)
+        return build_crash_patterns(route_ids, bins, causes)
 
     return app
 

@@ -47,8 +47,8 @@ Every reading and crash is labelled with a **weather regime**
 ([docs/weather-regimes.md](docs/weather-regimes.md)) at ingest — the shared
 vocabulary that lets the product match crash history to today's forecast.
 Each crash is also **linear-referenced onto its route's polyline** to a
-distance-along-route (`measure_mi`), so hotspots resolve to the per-mile bin,
-not just the nearest town ([ADR-0007](docs/adr/0007-spatial-model-per-mile-bins.md)).
+distance-along-route (`measure_mi`), so the record resolves to the per-mile
+bin, not just the nearest town ([ADR-0007](docs/adr/0007-spatial-model-per-mile-bins.md)).
 
 > **Which shell are you in?** The examples use Unix/bash syntax. On **Windows
 > PowerShell**, two things differ: activate the venv with
@@ -111,7 +111,7 @@ python -m pipeline.sources.ccrs --years 2024 2025   # stream statewide CSV, keep
 python -m pipeline.backfill crashes                 # load crashes, each with measure_mi
 python -m pipeline.backfill weather --start 2025-11-01 --end 2026-03-31   # hourly history (no Kafka)
 
-# hotspot grain preview: route × per-mile bin × regime (single line — paste as-is)
+# per-mile grain preview: route × mile bin × regime (single line — paste as-is)
 docker compose exec postgres psql -U app -d app -c "select route_id, floor(measure_mi) as mile_bin, weather_regime, count(*) from crashes where measure_mi is not null group by 1,2,3 order by count desc limit 15;"
 ```
 

@@ -1,9 +1,9 @@
 -- Tiny, hand-readable bronze fixture for CI and local dbt verification.
 -- Covers each interesting shape once:
 --   * a snow cluster spread over three adjacent mile bins (44/45/46) where the
---     busiest (bin 44, 8 crashes incl. one fatal) is >= 1.5x the corridor's
---     per-mile average and its neighbours are not, so is_hotspot and pct_fatal
---     are both exercised (and the relative, not absolute, definition is tested);
+--     busiest (bin 44, 8 crashes incl. one fatal) sits exactly at the
+--     small-sample threshold, so pct_fatal and the >= 8 flag are exercised
+--     from both sides;
 --   * a crash whose report says CLEAR but a sensor reading within 2 h says
 --     SNOW, so regime_source = 'sensor' is exercised;
 --   * a clear-weather crash in a different bin (small_sample = true);
@@ -31,7 +31,7 @@ insert into crashes
      collision_type, primary_factor, collided_with, primary_road, lighting,
      day_of_week, weather, road_surface, weather_regime, num_injured, num_killed, measure_mi)
 values
-    -- Donner Summit snow cluster, all in mile bin 44 (>= 8 rows -> hotspot).
+    -- Donner Summit snow cluster, all in mile bin 44 (8 rows -> not small_sample).
     ('ci-1', '2026-01-09 07:10:00+00', 39.3170, -120.3300, 'I-80', 'EB', 'Injury',
      'Rear End', '22350 UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
      'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 2, 0, 44.10),
@@ -56,9 +56,8 @@ values
     ('ci-8', '2026-01-09 12:00:00+00', 39.3169, -120.3205, 'I-80', 'EB', 'Injury',
      'Rear End', '22350 UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
      'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 44.80),
-    -- Two lighter SNOW bins next door (45 and 46). With bin 44 they make a
-    -- 3-mile crash-bearing span whose per-mile average is (8+2+2)/3 = 4, so bin
-    -- 44 concentrates at 8/4 = 2.0x (a hotspot) while 45 and 46 sit at 0.5x.
+    -- Two lighter SNOW bins next door (45 and 46), so adjacent bins with
+    -- different counts (and small_sample = true) exist alongside the dense one.
     ('ci-13', '2026-01-09 08:15:00+00', 39.3155, -120.3180, 'I-80', 'EB', 'Injury',
      'Rear End', 'UNSAFE SPEED', 'Other Motor Vehicle', 'I-80 EASTBOUND',
      'Daylight', 'Friday', 'SNOWING', 'Snowy/Icy', 'SNOW', 1, 0, 45.20),

@@ -1,201 +1,204 @@
 import { useEffect, useMemo, useState } from 'react'
-import { TOWNS, lerp, townMile, routeIncidents, type Route, type RouteIncident, type Cause } from '../lib/data'
+import type { CrashBin, CrashPatternsResponse, JourneyResponse } from '../api/types'
+import { haversine } from '../lib/data'
+import { densestBin, hotThreshold } from '../lib/hotspot'
+import { regimeProse } from '../lib/regime'
 import { useReveal } from '../lib/useReveal'
 
 const W = 800
-const H = 240
-const PAD_Y = 34
+const H = 96
+const BASE_Y = 76 // the strip's ground line; stems grow up from here
+const MAX_STEM = 56
 
 interface Props {
-  route: Route
-  dayIdx: number
+  journey: JourneyResponse
+  data: CrashPatternsResponse
 }
 
-interface Hotspot {
-  b: number
-  c: number
-  mile: number
+interface StripDot {
+  x: number
+  stemTop: number
+  r: number
+  isHot: boolean
+  bin: CrashBin
 }
 
-interface ProfileModel {
-  linePath: string
-  areaPath: string
-  townPts: Array<{ x: number; y: number }>
-  bins: Array<{ x: number, yTop: number, r: number, isHot: boolean }>
-  hotspots: Hotspot[]
-  axisLabels: string[]
+interface Strip {
+  routeId: string
+  routeName: string
+  axisLo: number // first mile drawn: the leg's span start, or the route start
+  axisHi: number // last mile drawn: the leg's span end, or the last occupied bin
+  dots: StripDot[]
 }
 
-function buildProfile(route: Route, list: RouteIncident[]): ProfileModel {
-  const order = route.order
-  const miles = order.map((i) => townMile(route, i))
-  const maxMile = Math.max(...miles, 1)
-  const els = order.map((i) => TOWNS[i].el)
-  const minEl = Math.min(...els) * 0.9
-  const maxEl = Math.max(...els) * 1.05
-  const x = (m: number) => (m / maxMile) * W
-  const y = (e: number) => H - PAD_Y - ((e - minEl) / (maxEl - minEl)) * (H - PAD_Y * 1.6)
+/**
+ * One density strip per highway of the journey: each occupied mile of road is
+ * a stem on the route's own mile axis (measure from the route start,
+ * ADR-0007), taller and larger where more history sits. The axis covers the
+ * stretch the drive covers on that road (the leg's span); a span-less leg
+ * falls back to route start through the last occupied bin, matching the
+ * whole-corridor record the API serves for it. Bins notably above the drive's
+ * average marked mile are accented - a deliberately simple display heuristic,
+ * relative to the journey's own matched record.
+ */
+function buildStrips(journey: JourneyResponse, bins: CrashBin[]): { strips: Strip[]; top: CrashBin | null } {
+  const maxCount = Math.max(...bins.map((b) => b.crashCount), 1)
+  const threshold = hotThreshold(bins)
+  const isHot = (b: CrashBin) => b.crashCount >= threshold
 
-  const pts = order.map((i, k) => ({ x: x(miles[k]), y: y(TOWNS[i].el) }))
-  const linePath = pts.map((p, k) => `${k ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
-  const areaPath = `${linePath} L ${W} ${H} L 0 ${H} Z`
-
-  // interpolated elevation y at an arbitrary mile, for hotspot stems
-  const yAtMile = (m: number) => {
-    let e = TOWNS[order[0]].el
-    for (let k = 0; k < order.length - 1; k++) {
-      if (m >= miles[k] && m <= miles[k + 1]) {
-        const t = (m - miles[k]) / (miles[k + 1] - miles[k] || 1)
-        e = lerp(TOWNS[order[k]].el, TOWNS[order[k + 1]].el, t)
-        break
-      }
-    }
-    return y(e)
-  }
-
-  // hotspot bins (by mile) among similar-weather incidents
-  const binCount = 10
-  const binW = maxMile / binCount
-  const counts = new Array<number>(binCount).fill(0)
-  list.forEach((i) => {
-    counts[Math.min(binCount - 1, Math.floor(i.mile / binW))]++
-  })
-  const mean = counts.reduce((a, b) => a + b, 0) / binCount
-  const maxCount = Math.max(...counts, 1)
-  // hotspot = bin notably above average
-  const hotspots: Hotspot[] = []
-  counts.forEach((c, b) => {
-    if (c >= Math.max(2, mean * 1.6)) hotspots.push({ b, c, mile: Math.round((b + 0.5) * binW) })
-  })
-  hotspots.sort((a, b) => b.c - a.c)
-
-  const bins = counts.flatMap((c, b) => {
-    if (c === 0) return []
-    const mid = (b + 0.5) * binW
+  const strips = journey.via.flatMap((leg) => {
+    const routeBins = bins.filter((b) => b.routeId === leg.id)
+    if (!routeBins.length) return []
+    const axisLo = leg.span ? Math.floor(leg.span[0]) : 0
+    const axisHi = leg.span
+      ? Math.floor(leg.span[1]) + 1
+      : Math.max(...routeBins.map((b) => b.mileBin)) + 1
     return [{
-      x: x(mid),
-      yTop: yAtMile(mid),
-      r: 4 + (c / maxCount) * 10,
-      isHot: hotspots.some((h) => h.b === b),
+      routeId: leg.id,
+      routeName: leg.name,
+      axisLo,
+      axisHi,
+      dots: routeBins.map((bin) => {
+        const t = bin.crashCount / maxCount
+        return {
+          x: ((bin.mileBin + 0.5 - axisLo) / (axisHi - axisLo)) * W,
+          stemTop: BASE_Y - (6 + t * MAX_STEM),
+          r: 3.5 + t * 7,
+          isHot: isHot(bin),
+          bin,
+        }
+      }),
     }]
   })
 
-  const maxEl2 = Math.max(...els)
-  const axisLabels = order
-    .map((i, k) =>
-      k === 0 || k === order.length - 1 || TOWNS[i].el === maxEl2
-        ? `${TOWNS[i].id} · mi ${Math.round(miles[k])}`
-        : null,
-    )
-    .filter((s): s is string => s !== null)
-
-  return { linePath, areaPath, townPts: pts, bins, hotspots, axisLabels }
+  // The densest accented bin anywhere on the drive, for the caption (and the
+  // same bin the map marks - one shared definition in lib/hotspot.ts).
+  return { strips, top: densestBin(bins) }
 }
 
-function nearestTownLabel(route: Route, mile: number): string {
-  let best = TOWNS[route.order[0]].id
-  let bestD = Infinity
-  route.order.forEach((i) => {
-    const d = Math.abs(townMile(route, i) - mile)
-    if (d < bestD) {
-      bestD = d
-      best = TOWNS[i].id
+/** The stop nearest to a bin, to say "near Donner Summit" instead of a number. */
+function nearestStopName(journey: JourneyResponse, bin: CrashBin): string {
+  let best = journey.stops[0].waypoint
+  let bestMi = Infinity
+  journey.stops.forEach(({ waypoint }) => {
+    const d = haversine([bin.lat, bin.lon], [waypoint.lat, waypoint.lon])
+    if (d < bestMi) {
+      bestMi = d
+      best = waypoint
     }
   })
-  return best
+  return best.name
 }
 
-export function InsightSection({ route, dayIdx }: Props) {
-  const sectionRef = useReveal<HTMLElement>(route)
-  const { cond, similar, list } = useMemo(() => routeIncidents(route, dayIdx), [route, dayIdx])
-  const profile = useMemo(() => buildProfile(route, list), [route, list])
-
-  const causes = useMemo(() => {
-    const tally = new Map<Cause, number>()
-    list.forEach((i) => tally.set(i.cause, (tally.get(i.cause) ?? 0) + 1))
-    const total = list.length || 1
-    return [...tally.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([name, n]) => ({ name, pct: Math.round((n / total) * 100) }))
-  }, [list])
+export function InsightSection({ journey, data }: Props) {
+  const sectionRef = useReveal<HTMLElement>(journey)
+  const { strips, top } = useMemo(() => buildStrips(journey, data.bins), [journey, data.bins])
+  // The hovered stem, for the strip's popup (same card the map popup shows,
+  // in the panel's ochre). Cleared on data change so it never names a bin
+  // from the previous journey.
+  const [hover, setHover] = useState<{ routeId: string; dot: StripDot } | null>(null)
 
   // animate cause bars in from 0 on data change
   const [barsIn, setBarsIn] = useState(false)
   useEffect(() => {
     setBarsIn(false)
+    setHover(null)
     const id = window.requestAnimationFrame(() => window.requestAnimationFrame(() => setBarsIn(true)))
     return () => window.cancelAnimationFrame(id)
-  }, [causes])
+  }, [data])
 
-  const top = profile.hotspots[0]
+  const sinceYear = data.firstCrashDate?.slice(0, 4)
 
   return (
     <section className="insight" ref={sectionRef}>
       <div className="section-head">
         <span className="kicker">The road's memory</span>
         <h2>
-          In <em>{cond.toLowerCase()}-like</em> conditions, this is what the road remembers
+          This is what the road remembers <em>along your drive</em>
         </h2>
         <p className="sub">
-          Your forecast trends toward <strong>{cond.toLowerCase()}</strong> along the drive. Below
-          is only the history recorded in similar weather ({similar.join(', ').toLowerCase()}).
+          Each stretch of your drive is matched to its own forecast — snow history where snow is
+          expected, clear history where it looks clear. Below is only that matched history, on
+          the stretch of each highway your route covers.
         </p>
       </div>
 
       <div className="insight-grid">
         <div className="insight-col insight-profile-col">
-          <h3 className="mini-h">Elevation &amp; attention hotspots</h3>
-          <div className="profile-wrap">
-            <svg className="profile" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="elg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#9DB183" stopOpacity=".5" />
-                  <stop offset="1" stopColor="#9DB183" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={profile.areaPath} fill="url(#elg)" />
-              <path d={profile.linePath} fill="none" stroke="#E7DFC8" strokeWidth="2.5" strokeLinejoin="round" />
-              {profile.bins.map((bin, k) => (
-                <g key={k} opacity={bin.isHot ? 1 : 0.5}>
-                  <line
-                    x1={bin.x} y1={bin.yTop} x2={bin.x} y2={H - PAD_Y}
-                    stroke={bin.isHot ? '#B87C24' : '#8E9AA6'} strokeWidth="1" strokeDasharray="2 3"
-                  />
-                  <circle
-                    cx={bin.x} cy={H - PAD_Y} r={bin.r}
-                    fill={bin.isHot ? 'rgba(224,169,74,.92)' : 'rgba(173,177,151,.45)'}
-                    stroke="#20261C" strokeWidth="1.5"
-                  />
-                </g>
-              ))}
-              {profile.townPts.map((p, k) => (
-                <circle key={k} cx={p.x} cy={p.y} r="3.5" fill="#ECE3CE" />
-              ))}
-            </svg>
-          </div>
-          <div className="profile-axis">
-            {profile.axisLabels.map((label) => (
-              <span key={label}>{label}</span>
-            ))}
-          </div>
+          <h3 className="mini-h">Crash density, mile by mile</h3>
+          {strips.map((strip) => (
+            <div className="route-strip" key={strip.routeId}>
+              <span className="strip-name">
+                {strip.routeId} · {strip.routeName}
+              </span>
+              {/* Hovering a stem pops the same card the map popup shows, in
+                  the panel's ochre - the axis alone cannot place one dot. */}
+              {hover?.routeId === strip.routeId && (
+                <div
+                  className="strip-pop"
+                  style={{ left: `${Math.min(82, Math.max(18, (hover.dot.x / W) * 100))}%` }}
+                >
+                  <span className="pop-h">
+                    {hover.dot.bin.crashCount} crash{hover.dot.bin.crashCount === 1 ? '' : 'es'} in
+                    similar weather
+                  </span>
+                  <div className="pop-row"><span>Where</span><b>mile {hover.dot.bin.mileBin} of {strip.routeId}</b></div>
+                  <div className="pop-row"><span>Forecast here</span><b>{regimeProse(hover.dot.bin.regime)}</b></div>
+                  <div className="pop-row"><span>Most common</span><b>{hover.dot.bin.topCause ?? 'Unknown'}</b></div>
+                  <div className="pop-row"><span>Years</span><b>{hover.dot.bin.firstCrashDate.slice(0, 4)}–{hover.dot.bin.lastCrashDate.slice(0, 4)}</b></div>
+                </div>
+              )}
+              <div className="profile-wrap">
+                <svg className="profile" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+                  <line x1="0" y1={BASE_Y} x2={W} y2={BASE_Y} stroke="#E7DFC8" strokeWidth="1.5" opacity="0.5" />
+                  {strip.dots.map((dot) => (
+                    <g
+                      key={dot.bin.mileBin}
+                      opacity={dot.isHot ? 1 : 0.55}
+                      role="img"
+                      aria-label={`Mile ${dot.bin.mileBin} of ${strip.routeId}: ${dot.bin.crashCount} crash${dot.bin.crashCount === 1 ? '' : 'es'}`}
+                      tabIndex={0}
+                      onMouseEnter={() => setHover({ routeId: strip.routeId, dot })}
+                      onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover({ routeId: strip.routeId, dot })}
+                      onBlur={() => setHover(null)}
+                    >
+                      <line
+                        x1={dot.x} y1={dot.stemTop} x2={dot.x} y2={BASE_Y}
+                        stroke={dot.isHot ? '#B87C24' : '#8E9AA6'} strokeWidth="1" strokeDasharray="2 3"
+                      />
+                      <circle
+                        cx={dot.x} cy={dot.stemTop} r={dot.r}
+                        fill={dot.isHot ? 'rgba(224,169,74,.92)' : 'rgba(173,177,151,.45)'}
+                        stroke="#20261C" strokeWidth="1.5"
+                      />
+                    </g>
+                  ))}
+                </svg>
+              </div>
+              <div className="profile-axis">
+                <span>mi {strip.axisLo}</span>
+                <span>mi {strip.axisHi}</span>
+              </div>
+            </div>
+          ))}
           <p className="insight-caption">
             {top ? (
               <>
-                In these conditions, incidents cluster a little more densely around{' '}
-                <span className="hotspot-tag">mile {top.mile}</span> near{' '}
-                {nearestTownLabel(route, top.mile)} — a good place to ease your speed and leave
-                extra following distance. Marks elsewhere are more evenly spread.
+                Crashes cluster a little more densely around{' '}
+                <span className="hotspot-tag">mile {top.mileBin} of {top.routeId}</span> near{' '}
+                {nearestStopName(journey, top)}, a good place to ease your speed and leave extra
+                following distance. Marks elsewhere are more evenly spread.
               </>
-            ) : list.length ? (
+            ) : data.bins.length ? (
               <>
-                History on this route is spread fairly evenly in these conditions — no single
-                stretch stands out. Steady attention throughout serves you best.
+                History matched to your forecast is spread fairly evenly along these roads; no
+                single stretch stands out. Steady attention throughout serves you best.
               </>
             ) : (
               <>
-                No comparable incidents are on record for this route in weather like your forecast.
-                Enjoy the drive — and keep your usual mountain caution.
+                No crashes are on record for these highways in weather like your forecast. Enjoy
+                the drive, and keep your usual mountain caution.
               </>
             )}
           </p>
@@ -203,11 +206,11 @@ export function InsightSection({ route, dayIdx }: Props) {
         <div className="insight-col">
           <h3 className="mini-h">What tends to be involved</h3>
           <ul className="causes">
-            {causes.length ? (
-              causes.map(({ name, pct }) => (
-                <li className="cause" key={name}>
+            {data.topCauses.length ? (
+              data.topCauses.map(({ cause, pct }) => (
+                <li className="cause" key={cause}>
                   <div className="cause-top">
-                    <span className="cause-name">{name}</span>
+                    <span className="cause-name">{cause}</span>
                     <span className="cause-pct">{pct}%</span>
                   </div>
                   <div className="cause-bar">
@@ -217,13 +220,18 @@ export function InsightSection({ route, dayIdx }: Props) {
               ))
             ) : (
               <li className="insight-caption soft">
-                No comparable history recorded on this route in these conditions — a quiet stretch.
+                No comparable history recorded on these roads in these conditions: a quiet stretch.
               </li>
             )}
           </ul>
           <p className="insight-caption soft">
-            Based on {list.length} recorded incident{list.length === 1 ? '' : 's'} on this route in
-            similar weather.
+            Based on {data.crashCount} recorded crash{data.crashCount === 1 ? '' : 'es'} along
+            your route in weather like each stretch&apos;s forecast
+            {sinceYear ? ` since ${sinceYear}` : ''}
+            {data.pctFatal !== null ? `; ${data.pctFatal}% were fatal` : ''}.
+            {data.smallSample && data.crashCount > 0 && (
+              <> That is a small record, so read it as context rather than a pattern.</>
+            )}
           </p>
         </div>
       </div>

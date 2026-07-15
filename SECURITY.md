@@ -3,6 +3,36 @@
 A running record of how security was considered as this repository evolved.
 Each change that touches the security posture appends a dated section.
 
+## 2026-07-14 - feat/crash-patterns-live (database read posture)
+
+- **The API talks to Postgres again** (the first query since the journey
+  branch removed the last one), through one store
+  ([backend/api/crashes.py](backend/api/crashes.py)) with bound parameters
+  only. The single spliced identifier (the marts' schema name) comes from
+  typed settings, never from the request.
+- **Inputs are validated before any query runs.** `departure` must parse as
+  an ISO 8601 time and `from`/`to` must resolve to a journey in the committed
+  in-memory index; anything else is answered 400/404 without touching the
+  database. The roads, mile stretches and weather regimes the query filters
+  on come from that index and the server's own forecast sampling, never from
+  request input.
+- **No new outbound surface.** Matching each stretch to its forecast reuses
+  the one fixed-host Open-Meteo client (same SSRF guards, timeout and
+  5-minute cache as /api/journey, which usually pre-warms it); no
+  user-controlled string reaches the upstream request.
+- **Credentials come from the environment**, the same `POSTGRES_*` variables
+  (or one `DATABASE_URL`) the pipeline and dbt read; nothing new to store in
+  the repo. The endpoint only ever issues `SELECT`s; pointing production's
+  `DATABASE_URL` at a read-only role is the deploy-time follow-through.
+- **Failure stays generic.** A pool or query error surfaces as the existing
+  generic JSON 500 (details go to the server log with the correlation id),
+  and the connection pool caps at 4 with bounded connect and acquire
+  timeouts, so a request flood queues instead of piling connections onto the
+  database.
+- **Data stays non-personal.** The endpoint serves aggregated public crash
+  records (counts, dates, cause labels per mile of road); no fields are added
+  that could identify a person or vehicle.
+
 ## 2026-07-11 - feat/journey-routing (routing stays off the request path)
 
 - **No new runtime outbound call.** Multi-highway routing uses OSRM, but only at
