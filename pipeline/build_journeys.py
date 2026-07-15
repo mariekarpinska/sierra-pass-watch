@@ -33,7 +33,7 @@ from pathlib import Path
 from pipeline.fetch import get_json
 from pipeline.geo import cumulative_miles, point_at_measure, project_to_polyline
 from pipeline.polylines import BUFFER_MILES
-from pipeline.routes import ROUTES, town_slug
+from pipeline.routes import ROUTES, TOWN_ELEVATIONS_FT, town_slug
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +51,18 @@ THROTTLE_SECONDS = 0.3
 
 
 def unique_towns() -> dict[str, dict]:
-    """Every catalogue town once, keyed by slug (junction towns collapse to one)."""
+    """Every catalogue town once, keyed by slug (junction towns collapse to
+    one), each with its elevation (a KeyError here means a town was added to
+    the catalogue without one)."""
     towns: dict[str, dict] = {}
     for route in ROUTES:
         for name, lat, lon in route["towns"]:
-            towns.setdefault(town_slug(name), {"name": name, "lat": lat, "lon": lon})
+            slug = town_slug(name)
+            towns.setdefault(
+                slug,
+                {"name": name, "lat": lat, "lon": lon,
+                 "elevationFt": TOWN_ELEVATIONS_FT[slug]},
+            )
     return towns
 
 

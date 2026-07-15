@@ -4,247 +4,296 @@
   "colfax": {
    "name": "Colfax",
    "lat": 39.1002,
-   "lon": -120.9533
+   "lon": -120.9533,
+   "elevationFt": 2421
   },
   "donner-summit": {
    "name": "Donner Summit",
    "lat": 39.3163,
-   "lon": -120.3208
+   "lon": -120.3208,
+   "elevationFt": 6867
   },
   "truckee": {
    "name": "Truckee",
    "lat": 39.328,
-   "lon": -120.1833
+   "lon": -120.1833,
+   "elevationFt": 5820
   },
   "placerville": {
    "name": "Placerville",
    "lat": 38.7296,
-   "lon": -120.7985
+   "lon": -120.7985,
+   "elevationFt": 1864
   },
   "echo-summit": {
    "name": "Echo Summit",
    "lat": 38.8124,
-   "lon": -120.0307
+   "lon": -120.0307,
+   "elevationFt": 7421
   },
   "south-lake-tahoe": {
    "name": "South Lake Tahoe",
    "lat": 38.9399,
-   "lon": -119.9772
+   "lon": -119.9772,
+   "elevationFt": 6270
   },
   "bridgeport": {
    "name": "Bridgeport",
    "lat": 38.2566,
-   "lon": -119.2313
+   "lon": -119.2313,
+   "elevationFt": 6473
   },
   "lee-vining": {
    "name": "Lee Vining",
    "lat": 37.9558,
-   "lon": -119.1188
+   "lon": -119.1188,
+   "elevationFt": 6798
   },
   "bishop": {
    "name": "Bishop",
    "lat": 37.3636,
-   "lon": -118.3951
+   "lon": -118.3951,
+   "elevationFt": 4147
   },
   "lone-pine": {
    "name": "Lone Pine",
    "lat": 36.6061,
-   "lon": -118.0626
+   "lon": -118.0626,
+   "elevationFt": 3730
   },
   "oroville": {
    "name": "Oroville",
    "lat": 39.5138,
-   "lon": -121.5564
+   "lon": -121.5564,
+   "elevationFt": 167
   },
   "quincy": {
    "name": "Quincy",
    "lat": 39.9368,
-   "lon": -120.9456
+   "lon": -120.9456,
+   "elevationFt": 3428
   },
   "jackson": {
    "name": "Jackson",
    "lat": 38.3489,
-   "lon": -120.7741
+   "lon": -120.7741,
+   "elevationFt": 1224
   },
   "kirkwood": {
    "name": "Kirkwood",
    "lat": 38.6868,
-   "lon": -120.0657
+   "lon": -120.0657,
+   "elevationFt": 7808
   },
   "carson-pass": {
    "name": "Carson Pass",
    "lat": 38.694,
-   "lon": -119.9842
+   "lon": -119.9842,
+   "elevationFt": 8442
   },
   "arnold": {
    "name": "Arnold",
    "lat": 38.2552,
-   "lon": -120.3502
+   "lon": -120.3502,
+   "elevationFt": 4029
   },
   "bear-valley": {
    "name": "Bear Valley",
    "lat": 38.4602,
-   "lon": -120.0419
+   "lon": -120.0419,
+   "elevationFt": 7067
   },
   "ebbetts-pass": {
    "name": "Ebbetts Pass",
    "lat": 38.5466,
-   "lon": -119.8085
+   "lon": -119.8085,
+   "elevationFt": 8658
   },
   "sonora": {
    "name": "Sonora",
    "lat": 37.9841,
-   "lon": -120.3822
+   "lon": -120.3822,
+   "elevationFt": 1804
   },
   "pinecrest": {
    "name": "Pinecrest",
    "lat": 38.1929,
-   "lon": -119.9876
+   "lon": -119.9876,
+   "elevationFt": 5564
   },
   "sonora-pass": {
    "name": "Sonora Pass",
    "lat": 38.3283,
-   "lon": -119.636
+   "lon": -119.636,
+   "elevationFt": 9646
   },
   "groveland": {
    "name": "Groveland",
    "lat": 37.8377,
-   "lon": -120.2266
+   "lon": -120.2266,
+   "elevationFt": 2923
   },
   "tuolumne-meadows": {
    "name": "Tuolumne Meadows",
    "lat": 37.8736,
-   "lon": -119.35
+   "lon": -119.35,
+   "elevationFt": 8612
   },
   "tioga-pass": {
    "name": "Tioga Pass",
    "lat": 37.9105,
-   "lon": -119.2573
+   "lon": -119.2573,
+   "elevationFt": 9944
   },
   "lake-isabella": {
    "name": "Lake Isabella",
    "lat": 35.6188,
-   "lon": -118.4729
+   "lon": -118.4729,
+   "elevationFt": 2503
   },
   "walker-pass": {
    "name": "Walker Pass",
    "lat": 35.6597,
-   "lon": -118.029
+   "lon": -118.029,
+   "elevationFt": 5449
   },
   "ridgecrest": {
    "name": "Ridgecrest",
    "lat": 35.6225,
-   "lon": -117.6709
+   "lon": -117.6709,
+   "elevationFt": 2300
   },
   "grass-valley": {
    "name": "Grass Valley",
    "lat": 39.2188,
-   "lon": -121.0608
+   "lon": -121.0608,
+   "elevationFt": 2421
   },
   "auburn": {
    "name": "Auburn",
    "lat": 38.8966,
-   "lon": -121.0769
+   "lon": -121.0769,
+   "elevationFt": 1227
   },
   "mariposa": {
    "name": "Mariposa",
    "lat": 37.4849,
-   "lon": -119.9663
+   "lon": -119.9663,
+   "elevationFt": 1926
   },
   "tahoe-city": {
    "name": "Tahoe City",
    "lat": 39.1658,
-   "lon": -120.1428
+   "lon": -120.1428,
+   "elevationFt": 6250
   },
   "markleeville": {
    "name": "Markleeville",
    "lat": 38.6952,
-   "lon": -119.7782
+   "lon": -119.7782,
+   "elevationFt": 5574
   },
   "monitor-pass": {
    "name": "Monitor Pass",
    "lat": 38.673,
-   "lon": -119.619
+   "lon": -119.619,
+   "elevationFt": 8261
   },
   "kings-beach": {
    "name": "Kings Beach",
    "lat": 39.2377,
-   "lon": -120.0263
+   "lon": -120.0263,
+   "elevationFt": 6270
   },
   "stateline": {
    "name": "Stateline",
    "lat": 38.9596,
-   "lon": -119.9398
+   "lon": -119.9398,
+   "elevationFt": 6319
   },
   "incline-village": {
    "name": "Incline Village",
    "lat": 39.251,
-   "lon": -119.946
+   "lon": -119.946,
+   "elevationFt": 6476
   },
   "mount-rose-summit": {
    "name": "Mount Rose Summit",
    "lat": 39.314,
-   "lon": -119.897
+   "lon": -119.897,
+   "elevationFt": 8894
   },
   "el-portal": {
    "name": "El Portal",
    "lat": 37.6757,
-   "lon": -119.7831
+   "lon": -119.7831,
+   "elevationFt": 2021
   },
   "oakhurst": {
    "name": "Oakhurst",
    "lat": 37.3277,
-   "lon": -119.6493
+   "lon": -119.6493,
+   "elevationFt": 2283
   },
   "wawona": {
    "name": "Wawona",
    "lat": 37.5377,
-   "lon": -119.6566
+   "lon": -119.6566,
+   "elevationFt": 3996
   },
   "grant-grove": {
    "name": "Grant Grove",
    "lat": 36.7409,
-   "lon": -118.9618
+   "lon": -118.9618,
+   "elevationFt": 6578
   },
   "cedar-grove": {
    "name": "Cedar Grove",
    "lat": 36.7944,
-   "lon": -118.684
+   "lon": -118.684,
+   "elevationFt": 4613
   },
   "three-rivers": {
    "name": "Three Rivers",
    "lat": 36.4386,
-   "lon": -118.902
+   "lon": -118.902,
+   "elevationFt": 951
   },
   "giant-forest": {
    "name": "Giant Forest",
    "lat": 36.565,
-   "lon": -118.773
+   "lon": -118.773,
+   "elevationFt": 6493
   },
   "shaver-lake": {
    "name": "Shaver Lake",
    "lat": 37.1058,
-   "lon": -119.3179
+   "lon": -119.3179,
+   "elevationFt": 5617
   },
   "huntington-lake": {
    "name": "Huntington Lake",
    "lat": 37.233,
-   "lon": -119.2204
+   "lon": -119.2204,
+   "elevationFt": 6932
   },
   "south-lake": {
    "name": "South Lake",
    "lat": 37.169,
-   "lon": -118.564
+   "lon": -118.564,
+   "elevationFt": 10049
   },
   "mammoth-lakes": {
    "name": "Mammoth Lakes",
    "lat": 37.6485,
-   "lon": -118.9721
+   "lon": -118.9721,
+   "elevationFt": 7900
   },
   "june-lake": {
    "name": "June Lake",
    "lat": 37.7805,
-   "lon": -119.0718
+   "lon": -119.0718,
+   "elevationFt": 7848
   }
  },
  "journeys": {

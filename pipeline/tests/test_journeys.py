@@ -96,6 +96,12 @@ class TestSelection:
 class TestCommittedFile:
     data = json.loads((REPO / "shared" / "route-journeys.json").read_text(encoding="utf-8"))
 
+    def test_every_town_has_a_sane_elevation(self) -> None:
+        # Every catalogue town carries its elevation (unique_towns raises on a
+        # missing one); sane bounds catch a metres/feet mix-up or a typo.
+        for slug, town in unique_towns().items():
+            assert 0 < town["elevationFt"] < 15000, slug
+
     def test_town_directory_matches_the_catalogue(self) -> None:
         # Full equality, not just the slug set: a lat/lon or name edited in
         # routes.py must fail here until build_journeys is re-run, or the
