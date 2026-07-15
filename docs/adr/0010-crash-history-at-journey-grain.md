@@ -17,10 +17,13 @@ and snowing at the pass; the record shown has to pick one label.
 
 ## Decision
 
-One endpoint, `GET /api/crash-patterns?routes=&regime=`, composes the marts
-per request:
+One endpoint, `GET /api/crash-patterns?from=&to=&regime=`, composes the marts
+per request. The journey is named by its towns, exactly like `/api/journey`;
+the server resolves it against the same committed index, so the roads and the
+mile span the drive covers on each road come from one place, never from
+request input:
 
-- the occupied bins on those routes under that regime from
+- the occupied bins inside the journey's leg spans under that regime from
   `mart_crash_patterns` (each with its rank-1 cause from
   `mart_pattern_causes`, for the map popup);
 - the journey-level top causes with a GROUP BY over `mart_crash_conditions`,
@@ -28,6 +31,12 @@ per request:
   per-bin survivors;
 - totals (counts, fatality share, date bounds, the under-8 small-record flag)
   derived in code from the bins.
+
+Leg spans are computed at build time (`build_journeys.leg_spans`): each
+travelled road's span is the [first, last] mile bounded by the journey's own
+anchor towns, projected onto the road's committed polyline - the same measure
+axis the crash bins live on (ADR-0007). Both queries scope each road with one
+`unnest` join over the legs; a leg without a span matches its whole corridor.
 
 The frontend matches history against the **worst forecast regime along the
 journey** (REGIME_CODES is ordered worst-first), stated plainly in the copy.
@@ -62,11 +71,16 @@ tiny indexed reads gain nothing from being async.
 
 ## Consequences
 
-- The record covers each travelled highway's whole catalogue corridor, not
-  just the span the journey traverses; journeys carry no per-leg mile ranges
-  (no geometry at request time). The corridors are Sierra-scoped already, and
-  the copy says "on the highways you travel". If this ever misleads, the fix
-  is per-leg spans built into `route-journeys.json` at build time.
+- The record covers the stretch of each highway the journey actually drives,
+  and the copy says so ("the stretch of each highway your route covers").
+  Spans are anchor-bounded, which sets their limits: a road needs two anchor
+  towns of the drive on it to have a span at all, so about half the legs (the
+  sparse southern corridors especially) carry none and honestly fall back to
+  the whole corridor - over-including is the safe direction for a crash
+  record. The mile or two between a leg's last anchor and the actual
+  interchange is likewise uncounted. If the fallback ever misleads, the fix is
+  spans measured from the OSRM drive geometry instead of the anchors, at the
+  cost of retaining that geometry through the build.
 - One regime for the whole drive errs on the cautious side: snow at the pass
   shows the snow record for every leg, including legs forecast clear.
 - The mock insight panel's elevation chart had no live data source (nothing in

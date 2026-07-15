@@ -54,8 +54,20 @@ const JOURNEY: JourneyResponse = {
   fromId: "colfax",
   toId: "south-lake-tahoe",
   via: [
-    { id: "I-80", name: "Donner Pass", seasonal: false, note: "Only freeway across the range" },
-    { id: "US-50", name: "Echo Summit", seasonal: false, note: "Main South Tahoe approach" },
+    {
+      id: "I-80",
+      name: "Donner Pass",
+      seasonal: false,
+      note: "Only freeway across the range",
+      span: [0, 54],
+    },
+    {
+      id: "US-50",
+      name: "Echo Summit",
+      seasonal: false,
+      note: "Main South Tahoe approach",
+      span: null,
+    },
   ],
   departureUtc: "2026-01-12T15:00:00+00:00",
   generatedAtUtc: "2026-01-12T15:02:00+00:00",
@@ -136,10 +148,10 @@ describe("App - plan a journey and show the live forecast", () => {
       "south-lake-tahoe",
       expect.any(String),
     );
-    // The crash history kicks off right below, for the journey's highways
-    // under the worst forecast regime (the one SNOW stop here).
+    // The crash history kicks off right below, for this journey under the
+    // worst forecast regime (the one SNOW stop here).
     expect(await screen.findByText(/looking up the road/i)).toBeInTheDocument();
-    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith(["I-80", "US-50"], "SNOW");
+    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith("colfax", "south-lake-tahoe", "SNOW");
   });
 
   it("blocks planning when start and destination are the same", async () => {

@@ -11,8 +11,10 @@ Each change that touches the security posture appends a dated section.
   only. The single spliced identifier (the marts' schema name) comes from
   typed settings, never from the request.
 - **Inputs are validated before any query runs.** `regime` must be one of the
-  classifier's seven labels and every route id must exist in the in-memory
-  catalogue; anything else is answered 400/404 without touching the database.
+  classifier's seven labels and `from`/`to` must resolve to a journey in the
+  committed in-memory index; anything else is answered 400/404 without
+  touching the database. The roads and mile spans the query filters on come
+  from that index, never from request input.
 - **Credentials come from the environment**, the same `POSTGRES_*` variables
   (or one `DATABASE_URL`) the pipeline and dbt read; nothing new to store in
   the repo. The endpoint only ever issues `SELECT`s; pointing production's

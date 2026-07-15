@@ -33,7 +33,7 @@ export function CrashHistory({ journey }: Props) {
     if (regime === 'UNKNOWN' || routeIds.length === 0) return
     let cancelled = false
     setResult({ phase: 'loading' })
-    getCrashPatterns(routeIds, regime)
+    getCrashPatterns(journey.fromId, journey.toId, regime)
       .then((data) => {
         if (!cancelled) setResult({ phase: 'ok', data })
       })

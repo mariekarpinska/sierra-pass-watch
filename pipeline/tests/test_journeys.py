@@ -12,7 +12,7 @@ import itertools
 import json
 from pathlib import Path
 
-from pipeline.build_journeys import routes_for, towns_along, unique_towns
+from pipeline.build_journeys import leg_spans, routes_for, towns_along, unique_towns
 from pipeline.routes import ROUTES
 
 REPO = Path(__file__).parents[2]
@@ -37,6 +37,26 @@ class TestSelection:
 
     def test_reversed_line_reverses_the_order(self) -> None:
         assert towns_along(list(reversed(LINE)), TOWNS) == ["east", "mid", "west"]
+
+    def test_leg_span_is_bounded_by_the_on_route_stops(self) -> None:
+        # West and east sit on the line ~10.7 mi apart; the span runs between
+        # their projections, and the far-off town does not stretch it.
+        spans = leg_spans(
+            ["west", "off", "east"], ["TEST"], TOWNS, geometry_for=lambda road: LINE
+        )
+        assert set(spans) == {"TEST"}
+        lo, hi = spans["TEST"]
+        assert lo == 0.0
+        assert 10.0 < hi < 11.5
+
+    def test_a_leg_with_one_anchor_gets_no_span(self) -> None:
+        # One projected stop cannot bound a stretch; the road stays span-less
+        # and the API keeps its whole corridor (the cautious fallback).
+        assert leg_spans(["mid"], ["TEST"], TOWNS, geometry_for=lambda road: LINE) == {}
+
+    def test_a_road_without_a_polyline_gets_no_span(self) -> None:
+        # The four spur routes have no measure axis (ADR-0007).
+        assert leg_spans(["west", "east"], ["SPUR"], TOWNS, geometry_for=lambda road: []) == {}
 
     def test_routes_for_names_the_highways_in_travel_order(self) -> None:
         # The classic crossing: I-80 to Truckee, SR-89 down the west shore,
@@ -77,3 +97,12 @@ class TestCommittedFile:
         for entry in self.data["journeys"].values():
             assert entry["routes"], "every journey travels at least one road"
             assert set(entry["routes"]) <= known
+
+    def test_spans_are_ordered_and_only_on_travelled_roads(self) -> None:
+        # Every span is [lo, hi] miles on a road the journey actually names;
+        # a road may lack a span (single anchor, or a spur with no polyline),
+        # never the other way around.
+        for entry in self.data["journeys"].values():
+            assert set(entry["spans"]) <= set(entry["routes"])
+            for lo, hi in entry["spans"].values():
+                assert 0.0 <= lo <= hi

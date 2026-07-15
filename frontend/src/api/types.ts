@@ -76,6 +76,14 @@ export interface JourneyLeg {
   seasonal: boolean;
   /** Short context, e.g. "closed ~Nov-May". */
   note: string;
+  /**
+   * The [first, last] mile the drive covers on this road (the road's own mile
+   * axis, ADR-0007), bounded by the journey's anchor towns at build time.
+   * Null when the build could not bound it (fewer than two anchors on the
+   * road, or a spur with no polyline); the crash record then covers the
+   * road's whole corridor.
+   */
+  span: [number, number] | null;
 }
 
 /**
@@ -110,12 +118,13 @@ export interface CrashBin {
 }
 
 /**
- * GET /api/crash-patterns?routes=&regime=
+ * GET /api/crash-patterns?from=&to=&regime=
  *
- * The crash record for a set of highways (a journey's `via` legs) under one
- * weather regime: journey-level totals, the occupied per-mile bins for the
- * map, and the top recorded causes. Descriptive only, like everything else in
- * this contract.
+ * The crash record for a journey under one weather regime: journey-level
+ * totals, the occupied per-mile bins for the map, and the top recorded
+ * causes. Scoped to the mile span the drive covers on each highway (a leg
+ * with a null span keeps its whole corridor). Descriptive only, like
+ * everything else in this contract.
  */
 export interface CrashPatternsResponse {
   regime: RegimeCode;

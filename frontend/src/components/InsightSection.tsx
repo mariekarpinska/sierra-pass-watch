@@ -26,16 +26,20 @@ interface StripDot {
 interface Strip {
   routeId: string
   routeName: string
-  span: number // miles drawn, route start to the last occupied bin
+  axisLo: number // first mile drawn: the leg's span start, or the route start
+  axisHi: number // last mile drawn: the leg's span end, or the last occupied bin
   dots: StripDot[]
 }
 
 /**
  * One density strip per highway of the journey: each occupied mile of road is
  * a stem on the route's own mile axis (measure from the route start,
- * ADR-0007), taller and larger where more history sits. Bins notably above
- * the drive's average marked mile are accented - a deliberately simple
- * display heuristic, relative to the journey's own matched record.
+ * ADR-0007), taller and larger where more history sits. The axis covers the
+ * stretch the drive covers on that road (the leg's span); a span-less leg
+ * falls back to route start through the last occupied bin, matching the
+ * whole-corridor record the API serves for it. Bins notably above the drive's
+ * average marked mile are accented - a deliberately simple display heuristic,
+ * relative to the journey's own matched record.
  */
 function buildStrips(journey: JourneyResponse, bins: CrashBin[]): { strips: Strip[]; top: CrashBin | null } {
   const maxCount = Math.max(...bins.map((b) => b.crashCount), 1)
@@ -45,15 +49,19 @@ function buildStrips(journey: JourneyResponse, bins: CrashBin[]): { strips: Stri
   const strips = journey.via.flatMap((leg) => {
     const routeBins = bins.filter((b) => b.routeId === leg.id)
     if (!routeBins.length) return []
-    const span = Math.max(...routeBins.map((b) => b.mileBin)) + 1
+    const axisLo = leg.span ? Math.floor(leg.span[0]) : 0
+    const axisHi = leg.span
+      ? Math.floor(leg.span[1]) + 1
+      : Math.max(...routeBins.map((b) => b.mileBin)) + 1
     return [{
       routeId: leg.id,
       routeName: leg.name,
-      span,
+      axisLo,
+      axisHi,
       dots: routeBins.map((bin) => {
         const t = bin.crashCount / maxCount
         return {
-          x: ((bin.mileBin + 0.5) / span) * W,
+          x: ((bin.mileBin + 0.5 - axisLo) / (axisHi - axisLo)) * W,
           stemTop: BASE_Y - (6 + t * MAX_STEM),
           r: 3.5 + t * 7,
           isHot: isHot(bin),
@@ -106,7 +114,7 @@ export function InsightSection({ journey, regime, data }: Props) {
         </h2>
         <p className="sub">
           Your forecast trends toward <strong>{prose}</strong> along the drive. Below is only the
-          history recorded in those conditions on the highways you travel.
+          history recorded in those conditions on the stretch of each highway your route covers.
         </p>
       </div>
 
@@ -137,8 +145,8 @@ export function InsightSection({ journey, regime, data }: Props) {
                 </svg>
               </div>
               <div className="profile-axis">
-                <span>mi 0</span>
-                <span>mi {strip.span}</span>
+                <span>mi {strip.axisLo}</span>
+                <span>mi {strip.axisHi}</span>
               </div>
             </div>
           ))}
@@ -185,8 +193,8 @@ export function InsightSection({ journey, regime, data }: Props) {
             )}
           </ul>
           <p className="insight-caption soft">
-            Based on {data.crashCount} recorded crash{data.crashCount === 1 ? '' : 'es'} on these
-            highways in similar weather{sinceYear ? ` since ${sinceYear}` : ''}
+            Based on {data.crashCount} recorded crash{data.crashCount === 1 ? '' : 'es'} along
+            your route in similar weather{sinceYear ? ` since ${sinceYear}` : ''}
             {data.pctFatal !== null ? `; ${data.pctFatal}% were fatal` : ''}.
             {data.smallSample && data.crashCount > 0 && (
               <> That is a small record, so read it as context rather than a pattern.</>

@@ -28,6 +28,7 @@ from api.catalog import RouteCatalog, get_catalog
 from api.config import Settings
 from api.crashes import (
     CrashHistoryStore,
+    Leg,
     PostgresCrashHistoryStore,
     build_crash_patterns,
     get_crash_store,
@@ -167,7 +168,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # the UI can name the roads and warn about passes that close.
         routes_by_id = {route.id: route for route in catalog.routes}
         via = [
-            JourneyLeg(id=r.id, name=r.name, seasonal=r.seasonal, note=r.note)
+            JourneyLeg(
+                id=r.id,
+                name=r.name,
+                seasonal=r.seasonal,
+                note=r.note,
+                span=resolved.spans.get(r.id),
+            )
             for road in resolved.via
             if (r := routes_by_id.get(road)) is not None
         ]
@@ -182,41 +189,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stops=stops,
         )
 
-    # The crash record for a journey's highways under one weather regime:
-    # totals, occupied per-mile bins, top causes (from the dbt marts, composed
-    # per request - ADR-0010). `routes` is comma-separated catalogue ids, the
-    # journey's `via` legs. Missing/invalid params are a 400; a road the
-    # catalogue does not track is a 404, mirroring /api/journey's unknown town.
+    # The crash record for a journey under one weather regime: totals, occupied
+    # per-mile bins, top causes (from the dbt marts, composed per request -
+    # ADR-0010). The journey is named by its towns, exactly like /api/journey,
+    # and the server resolves it against the same committed index - so the
+    # roads AND the mile span the drive covers on each road come from one
+    # place, never from request input. Missing/invalid params are a 400; an
+    # unknown town or an unbuilt pair is a 404, mirroring /api/journey.
     # Declared `def`, not `async def`: FastAPI then runs it on a worker thread,
     # which is what lets the store block on the sync database driver without
     # stalling the event loop (see crashes.py for why the driver is sync).
     @app.get("/api/crash-patterns", response_model=CrashPatternsResponse)
     def crash_patterns(
-        routes: str | None = None,
+        from_: str | None = Query(default=None, alias="from"),
+        to: str | None = None,
         regime: str | None = None,
         store: CrashHistoryStore = Depends(get_crash_store),
-        catalog: RouteCatalog = Depends(get_catalog),
+        index: JourneyIndex = Depends(get_journey_index),
     ):
-        if not routes or not regime:
+        if not from_ or not to or not regime:
             return JSONResponse(
-                status_code=400, content={"error": "routes and regime are required"}
+                status_code=400, content={"error": "from, to and regime are required"}
             )
         if regime not in REGIMES:
             return JSONResponse(
                 status_code=400,
                 content={"error": f"regime must be one of {', '.join(REGIMES)}"},
             )
-        route_ids = [part.strip() for part in routes.split(",") if part.strip()]
-        known = {route.id for route in catalog.routes}
-        unknown = [route_id for route_id in route_ids if route_id not in known]
-        if not route_ids or unknown:
+        if from_ == to:
             return JSONResponse(
-                status_code=404,
-                content={"error": f"unknown route: {', '.join(unknown) or routes}"},
+                status_code=400, content={"error": "from and to must be different towns"}
             )
-        bins = store.bins(route_ids, regime)
-        causes = store.causes(route_ids, regime)
-        return build_crash_patterns(route_ids, regime, bins, causes)
+        resolved = index.resolve(from_, to)
+        if resolved is None:
+            return JSONResponse(
+                status_code=404, content={"error": "unknown town or journey"}
+            )
+        # One leg per road (a drive can rejoin a road; the record is the same
+        # either way). Spans arrive as mile measures; bins are whole miles, so
+        # int() floors each end and driving any part of a mile keeps its bin.
+        legs = []
+        for road in dict.fromkeys(resolved.via):
+            span = resolved.spans.get(road)
+            legs.append(
+                Leg(
+                    route_id=road,
+                    lo_bin=int(span[0]) if span else None,
+                    hi_bin=int(span[1]) if span else None,
+                )
+            )
+        bins = store.bins(legs, regime)
+        causes = store.causes(legs, regime)
+        return build_crash_patterns([leg.route_id for leg in legs], regime, bins, causes)
 
     return app
 

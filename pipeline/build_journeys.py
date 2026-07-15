@@ -11,8 +11,10 @@ anchors lie on the drive from A to B, and in what order?"
 Output (committed, read into memory by the API like the route catalogue):
 
 * ``towns``    - the picker's directory: slug -> {name, lat, lon}
-* ``journeys`` - "{slugA}|{slugB}" (slugs sorted) -> {towns: [slug ...], miles,
-                 minutes}, the anchor towns along that drive in A->B order
+* ``journeys`` - "{slugA}|{slugB}" (slugs sorted) -> {towns: [slug ...], routes,
+                 spans, miles, minutes}, the anchor towns along that drive in
+                 A->B order, the highways it follows, and per highway the
+                 [first, last] mile the drive covers on it (leg_spans)
 
 This is a build-time tool, run rarely and by hand; nothing at build or run time
 depends on OSRM being up. Re-run it only when the catalogue's towns change:
@@ -117,6 +119,49 @@ def routes_for(slugs: list[str], towns: dict[str, dict]) -> list[str]:
     return via
 
 
+def leg_spans(
+    slugs: list[str],
+    roads: list[str],
+    towns: dict[str, dict],
+    geometry_for=None,
+) -> dict[str, list[float]]:
+    """For each travelled road, the [first, last] mile the journey covers on it,
+    bounded by the journey's own stops projected onto the road's committed
+    polyline (the same measure axis crashes and bins live on, ADR-0007).
+
+    A road needs at least two on-route stops to bound a span; with fewer, and
+    for the spur routes that have no polyline, the road gets no span and the
+    API falls back to its whole corridor - over-including is the safe direction
+    for a crash record. The span is stop-bounded, so the mile or two between
+    the last anchor and the actual interchange is not counted; anchors are the
+    journey's unit of position, and the product claims nothing finer.
+
+    ``geometry_for`` is the polyline lookup, replaceable in tests; it defaults
+    to the committed route-polylines.json.
+    """
+    if geometry_for is None:
+        geometry_for = _route_geometry
+    spans: dict[str, list[float]] = {}
+    for road in dict.fromkeys(roads):
+        geometry = geometry_for(road)
+        if len(geometry) < 2:
+            continue
+        cumulative = cumulative_miles(geometry)
+        measures = [
+            measure
+            for slug in slugs
+            for measure, offset in [
+                project_to_polyline(
+                    towns[slug]["lat"], towns[slug]["lon"], geometry, cumulative
+                )
+            ]
+            if offset <= ON_ROUTE_MILES
+        ]
+        if len(measures) >= 2:
+            spans[road] = [round(min(measures), 1), round(max(measures), 1)]
+    return spans
+
+
 def fetch_route(a: dict, b: dict) -> dict:
     """OSRM driving route between two towns: geometry, distance, duration."""
     coords = f"{a['lon']},{a['lat']};{b['lon']},{b['lat']}"
@@ -168,9 +213,11 @@ def build(output: Path = OUTPUT_FILE) -> dict:
         # route that ends at South Lake Tahoe) - the drive never reaches it.
         first, last = sorted((ordered.index(slug_a), ordered.index(slug_b)))
         ordered = ordered[first : last + 1]
+        via = routes_for(ordered, towns)
         journeys[f"{slug_a}|{slug_b}"] = {
             "towns": ordered,
-            "routes": routes_for(ordered, towns),
+            "routes": via,
+            "spans": leg_spans(ordered, via, towns),
             "miles": round(route["miles"], 1),
             "minutes": round(route["minutes"]),
         }
@@ -183,9 +230,10 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "Multi-highway journeys between catalogue towns, built by "
             "python -m pipeline.build_journeys from OSRM driving routes. For each "
             "town pair, the catalogue's weather anchors that fall along the drive, "
-            "in travel order, plus the highways it follows. Committed so nothing "
-            "depends on OSRM at build/run time; re-run only when the catalogue's "
-            "towns change."
+            "in travel order, the highways it follows, and per highway the "
+            "[first, last] mile the drive covers on it (its span, on the same "
+            "measure axis as the crash bins). Committed so nothing depends on "
+            "OSRM at build/run time; re-run only when the catalogue's towns change."
         ),
         "towns": towns,
         "journeys": journeys,

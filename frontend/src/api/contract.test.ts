@@ -26,7 +26,15 @@ const TOWNS: Waypoint[] = [
 const JOURNEY: JourneyResponse = {
   fromId: "colfax",
   toId: "south-lake-tahoe",
-  via: [{ id: "I-80", name: "Donner Pass", seasonal: false, note: "Only freeway across the range" }],
+  via: [
+    {
+      id: "I-80",
+      name: "Donner Pass",
+      seasonal: false,
+      note: "Only freeway across the range",
+      span: [0, 54],
+    },
+  ],
   departureUtc: "2026-01-12T15:00:00+00:00",
   generatedAtUtc: "2026-01-12T15:02:00+00:00",
   totalMiles: 94.2,
@@ -104,13 +112,13 @@ describe("getJourney", () => {
 });
 
 describe("getCrashPatterns", () => {
-  it("sends the routes as one comma-separated param plus the regime", async () => {
+  it("names the journey by its towns plus the regime", async () => {
     mockGet.mockResolvedValue({ data: CRASH_PATTERNS });
 
-    const patterns = await getCrashPatterns(["I-80", "US-50"], "SNOW");
+    const patterns = await getCrashPatterns("colfax", "south-lake-tahoe", "SNOW");
 
     expect(mockGet).toHaveBeenCalledWith("/api/crash-patterns", {
-      params: { routes: "I-80,US-50", regime: "SNOW" },
+      params: { from: "colfax", to: "south-lake-tahoe", regime: "SNOW" },
     });
     expect(patterns.crashCount).toBe(16);
     expect(patterns.bins[0].mileBin).toBe(12);

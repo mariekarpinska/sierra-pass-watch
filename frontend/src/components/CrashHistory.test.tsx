@@ -18,8 +18,10 @@ const JOURNEY: JourneyResponse = {
   fromId: "colfax",
   toId: "south-lake-tahoe",
   via: [
-    { id: "I-80", name: "Donner Pass", seasonal: false, note: "year-round" },
-    { id: "US-50", name: "Echo Summit", seasonal: false, note: "year-round" },
+    // I-80 has a bounded span; US-50 has none (whole-corridor fallback), so
+    // both strip-axis paths render below.
+    { id: "I-80", name: "Donner Pass", seasonal: false, note: "year-round", span: [10, 54.2] },
+    { id: "US-50", name: "Echo Summit", seasonal: false, note: "year-round", span: null },
   ],
   departureUtc: "2026-01-12T15:00:00+00:00",
   generatedAtUtc: "2026-01-12T15:02:00+00:00",
@@ -114,19 +116,26 @@ beforeEach(() => {
 });
 
 describe("CrashHistory", () => {
-  it("asks for the journey's highways under the worst regime and renders the record", async () => {
+  it("asks for the journey under the worst regime and renders the record", async () => {
     vi.spyOn(crashApi, "getCrashPatterns").mockResolvedValue(PATTERNS);
 
     render(<CrashHistory journey={JOURNEY} />);
 
-    // The worst stop (SNOW) wins over CLEAR_DRY as the regime to match.
-    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith(["I-80", "US-50"], "SNOW");
+    // The worst stop (SNOW) wins over CLEAR_DRY as the regime to match; the
+    // journey is named by its towns and the server scopes it to the drive.
+    expect(crashApi.getCrashPatterns).toHaveBeenCalledWith("colfax", "south-lake-tahoe", "SNOW");
     expect(
       await screen.findByRole("heading", { name: /what the road remembers/i }),
     ).toBeInTheDocument();
-    // One density strip per highway that has history.
+    // One density strip per highway that has history. The I-80 axis covers
+    // the leg's driven span (miles 10-55); span-less US-50 falls back to
+    // route start through the last occupied bin (miles 0-41).
     expect(screen.getByText(/I-80 · Donner Pass/)).toBeInTheDocument();
     expect(screen.getByText(/US-50 · Echo Summit/)).toBeInTheDocument();
+    expect(screen.getByText("mi 10")).toBeInTheDocument();
+    expect(screen.getByText("mi 55")).toBeInTheDocument();
+    expect(screen.getByText("mi 0")).toBeInTheDocument();
+    expect(screen.getByText("mi 41")).toBeInTheDocument();
     // The densest bin is called out with its nearest stop by name.
     expect(screen.getByText(/mile 12 of I-80/)).toBeInTheDocument();
     expect(screen.getByText(/near Donner Summit/)).toBeInTheDocument();

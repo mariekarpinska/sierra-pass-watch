@@ -90,6 +90,12 @@ class JourneyLeg(CamelModel):
     name: str
     seasonal: bool
     note: str
+    # The [first, last] mile the drive covers on this road (the road's own
+    # measure axis, ADR-0007), bounded by the journey's anchor towns at build
+    # time. None when the build could not bound it (fewer than two anchors on
+    # the road, or a spur with no polyline); the crash record then covers the
+    # road's whole corridor.
+    span: tuple[float, float] | None = None
 
 
 class CauseStat(CamelModel):
@@ -122,12 +128,14 @@ class CrashBin(CamelModel):
 
 
 class CrashPatternsResponse(CamelModel):
-    """GET /api/crash-patterns?routes=&regime=
+    """GET /api/crash-patterns?from=&to=&regime=
 
-    The crash record for a set of highways (a journey's `via` legs) under one
-    weather regime: journey-level totals, the occupied per-mile bins for the
-    map, and the top recorded causes. Historical and descriptive only - counts,
-    dates and causes, never a judgement (test_forbidden_keys.py holds the line).
+    The crash record for a journey under one weather regime: journey-level
+    totals, the occupied per-mile bins for the map, and the top recorded
+    causes. Scoped to the mile span the drive covers on each highway (a leg
+    with no span keeps its whole corridor). Historical and descriptive only -
+    counts, dates and causes, never a judgement (test_forbidden_keys.py holds
+    the line).
     """
 
     regime: str

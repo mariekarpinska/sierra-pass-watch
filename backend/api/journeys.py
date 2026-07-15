@@ -27,10 +27,15 @@ class TownPoint(BaseModel):
 
 class JourneyEntry(BaseModel):
     """The anchors along one drive, ordered from the lexically-smaller town id,
-    plus the highways the drive follows (for the seasonal-pass warning)."""
+    plus the highways the drive follows (for the seasonal-pass warning) and,
+    per highway, the [first, last] mile the drive covers on it. A road absent
+    from `spans` could not be bounded at build time (build_journeys.leg_spans);
+    its crash record covers the whole corridor. Defaults to {} so index files
+    from before spans existed still load."""
 
     towns: list[str]
     routes: list[str]
+    spans: dict[str, tuple[float, float]] = {}
     miles: float
     minutes: int
 
@@ -38,10 +43,11 @@ class JourneyEntry(BaseModel):
 class ResolvedJourney(BaseModel):
     """A journey resolved for a specific direction: the ordered stops as
     route-independent waypoints (a journey crosses highways, so no single route
-    owns them), the highways travelled in order, plus totals."""
+    owns them), the highways travelled in order, their mile spans, plus totals."""
 
     stops: list[Waypoint]
     via: list[str]
+    spans: dict[str, tuple[float, float]]
     miles: float
     minutes: int
 
@@ -78,7 +84,11 @@ class JourneyIndex(BaseModel):
             for slug in slugs
             if (town := self.towns.get(slug)) is not None
         ]
-        return ResolvedJourney(stops=stops, via=via, miles=entry.miles, minutes=entry.minutes)
+        # Spans are measures on each road's own mile axis, so unlike the stop
+        # and road lists they read the same in either direction of travel.
+        return ResolvedJourney(
+            stops=stops, via=via, spans=entry.spans, miles=entry.miles, minutes=entry.minutes
+        )
 
 
 def get_journey_index(request: Request) -> JourneyIndex:

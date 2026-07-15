@@ -1,9 +1,16 @@
-"""GET /api/crash-patterns: the crash record for a journey's highways under one
-weather regime. The database seam (CrashHistoryStore) is faked, so these tests
-pin the endpoint's contract - param validation, the response shape on the wire,
-and the derived numbers (totals, fatality share, cause percentages) - without
-Postgres. The SQL itself is exercised against a real database by dbt build in
-CI and by the manual end-to-end check in the PR.
+"""GET /api/crash-patterns: the crash record for a journey under one weather
+regime. The database seam (CrashHistoryStore) is faked, so these tests pin the
+endpoint's contract - param validation, journey resolution into span-bounded
+legs, the response shape on the wire, and the derived numbers (totals,
+fatality share, cause percentages) - without Postgres. The SQL itself is
+exercised against a real database by dbt build in CI and by the manual
+end-to-end check in the PR.
+
+Journey resolution runs against the real committed shared/route-journeys.json
+(the app loads it at startup), so the expected legs below pin real spans:
+Colfax-South Lake Tahoe covers I-80 miles 0-54 and SR-89 miles 0-26.9, and
+US-50 has no span there (only one anchor town of the drive sits on it), so it
+keeps its whole corridor.
 """
 from __future__ import annotations
 
@@ -12,7 +19,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from api.crashes import BinRow, CauseRow, build_crash_patterns, get_crash_store
+from api.crashes import BinRow, CauseRow, Leg, build_crash_patterns, get_crash_store
 from api.main import create_app
 
 # Two bins on I-80, one on US-50: enough to exercise cross-route totals.
@@ -57,6 +64,14 @@ CAUSES = [
     CauseRow(cause="DUI", crash_count=2),
 ]
 
+# What Colfax-South Lake Tahoe resolves to: spans floored to whole-mile bins,
+# and span-less US-50 falling back to its whole corridor (None bounds).
+COLFAX_SLT_LEGS = [
+    Leg(route_id="I-80", lo_bin=0, hi_bin=54),
+    Leg(route_id="SR-89", lo_bin=0, hi_bin=26),
+    Leg(route_id="US-50", lo_bin=None, hi_bin=None),
+]
+
 
 class _CannedStore:
     """The store seam with fixed rows; records what it was asked for."""
@@ -64,13 +79,13 @@ class _CannedStore:
     def __init__(self, bins=BINS, causes=CAUSES):
         self._bins = bins
         self._causes = causes
-        self.calls: list[tuple[list[str], str]] = []
+        self.calls: list[tuple[list[Leg], str]] = []
 
-    def bins(self, route_ids, regime):
-        self.calls.append((route_ids, regime))
+    def bins(self, legs, regime):
+        self.calls.append((legs, regime))
         return self._bins
 
-    def causes(self, route_ids, regime):
+    def causes(self, legs, regime):
         return self._causes
 
 
@@ -88,15 +103,18 @@ def client(store):
 
 
 def test_returns_the_record_in_camel_case(client, store) -> None:
-    response = client.get("/api/crash-patterns?routes=I-80,US-50&regime=SNOW")
+    response = client.get(
+        "/api/crash-patterns?from=colfax&to=south-lake-tahoe&regime=SNOW"
+    )
 
     assert response.status_code == 200
     body = response.json()
-    # The store was asked for exactly the parsed routes and regime.
-    assert store.calls == [(["I-80", "US-50"], "SNOW")]
+    # The journey resolved into span-bounded legs - the store never sees more
+    # road than the drive covers (US-50 excepted: no span, whole corridor).
+    assert store.calls == [(COLFAX_SLT_LEGS, "SNOW")]
     # Journey-level numbers derive from the bins: 9+2+5 crashes, 1 fatal.
     assert body["regime"] == "SNOW"
-    assert body["routeIds"] == ["I-80", "US-50"]
+    assert body["routeIds"] == ["I-80", "SR-89", "US-50"]
     assert body["crashCount"] == 16
     assert body["fatalCount"] == 1
     # 1/16 = 6.25; Python's round() goes to the even neighbour, so 6.2.
@@ -126,11 +144,24 @@ def test_returns_the_record_in_camel_case(client, store) -> None:
     }
 
 
+def test_the_reverse_trip_asks_for_the_same_legs(client, store) -> None:
+    """Spans live on each road's own mile axis, so direction cannot change
+    which stretch of road the record covers. The legs arrive in reverse travel
+    order, which the record does not care about - compare as a set."""
+    client.get("/api/crash-patterns?from=south-lake-tahoe&to=colfax&regime=SNOW")
+
+    (legs, regime), = store.calls
+    assert regime == "SNOW"
+    assert set(legs) == set(COLFAX_SLT_LEGS)
+
+
 def test_an_empty_record_answers_honestly_empty(store) -> None:
     app = create_app()
     app.dependency_overrides[get_crash_store] = lambda: _CannedStore(bins=[], causes=[])
     with TestClient(app) as client:
-        body = client.get("/api/crash-patterns?routes=SR-4&regime=HIGH_WIND").json()
+        body = client.get(
+            "/api/crash-patterns?from=colfax&to=truckee&regime=HIGH_WIND"
+        ).json()
 
     assert body["crashCount"] == 0
     assert body["fatalCount"] == 0
@@ -144,28 +175,35 @@ def test_an_empty_record_answers_honestly_empty(store) -> None:
 
 def test_missing_params_are_a_400(client) -> None:
     assert client.get("/api/crash-patterns").status_code == 400
-    assert client.get("/api/crash-patterns?routes=I-80").status_code == 400
+    assert client.get("/api/crash-patterns?from=colfax&to=truckee").status_code == 400
+    assert client.get("/api/crash-patterns?from=colfax&regime=SNOW").status_code == 400
     assert client.get("/api/crash-patterns?regime=SNOW").status_code == 400
 
 
 def test_a_regime_outside_the_vocabulary_is_a_400(client) -> None:
-    response = client.get("/api/crash-patterns?routes=I-80&regime=BLIZZARD")
+    response = client.get(
+        "/api/crash-patterns?from=colfax&to=truckee&regime=BLIZZARD"
+    )
 
     assert response.status_code == 400
     assert "regime" in response.json()["error"]
 
 
-def test_a_road_the_catalogue_does_not_track_is_a_404(client, store) -> None:
-    response = client.get("/api/crash-patterns?routes=I-80,ROUTE-66&regime=SNOW")
+def test_the_same_town_twice_is_a_400(client) -> None:
+    response = client.get("/api/crash-patterns?from=colfax&to=colfax&regime=SNOW")
+
+    assert response.status_code == 400
+    assert "different towns" in response.json()["error"]
+
+
+def test_an_unknown_town_or_pair_is_a_404(client, store) -> None:
+    response = client.get(
+        "/api/crash-patterns?from=colfax&to=route-66-diner&regime=SNOW"
+    )
 
     assert response.status_code == 404
-    assert "ROUTE-66" in response.json()["error"]
-    # Nothing was queried for a road we do not track.
+    # Nothing was queried for a journey we never built.
     assert store.calls == []
-
-
-def test_a_routes_param_of_only_commas_is_a_404(client) -> None:
-    assert client.get("/api/crash-patterns?routes=,,&regime=SNOW").status_code == 404
 
 
 def test_small_sample_flags_a_thin_record() -> None:
