@@ -263,7 +263,18 @@ section{ position:relative; }
 .insight .section-head{ margin-bottom:2rem; }
 .insight-grid{ max-width:min(1200px,92vw); margin:0 auto; padding:0 clamp(1rem,4vw,3rem); display:grid; grid-template-columns:1.4fr 1fr; gap:2.4rem; align-items:start; }
 .insight-col{ background:var(--card); border:1px solid var(--line); border-radius:18px; padding:1.6rem; box-shadow:var(--shadow-sm); }
-.route-strip{ margin-bottom:1.1rem; }
+.route-strip{ margin-bottom:1.1rem; position:relative; }
+/* The strip's hover popup: same card the leaflet popup draws (rounded, shadowed,
+   header + label/value rows) in translucent ochre with dark-yellow text. */
+.strip-pop{
+  position:absolute; z-index:6; bottom:calc(100% + .35rem); transform:translateX(-50%);
+  min-width:240px; padding:.8rem 1rem; border-radius:12px; pointer-events:none;
+  background:rgba(224,169,74,.16); border:1px solid rgba(224,169,74,.38);
+  backdrop-filter:blur(10px); box-shadow:var(--shadow-md);
+}
+.strip-pop .pop-h{ font-family:var(--serif); font-weight:600; font-size:.98rem; display:block; margin-bottom:.3rem; color:var(--amber); }
+.strip-pop .pop-row{ display:flex; justify-content:space-between; gap:1rem; font-family:var(--mono); font-size:.74rem; color:var(--amber-deep); }
+.strip-pop .pop-row b{ color:var(--amber); font-weight:600; }
 .strip-name{ display:block; font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--granite); margin-bottom:.4rem; }
 .profile-wrap{ background:linear-gradient(180deg,#232A20,#1A1F16); border-radius:12px; overflow:hidden; border:1px solid var(--line-soft); }
 .profile{ width:100%; height:auto; display:block; }

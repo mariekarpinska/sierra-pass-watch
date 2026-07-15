@@ -4,7 +4,7 @@
 // neither the layout nor the observers a real map needs (the hook itself is
 // exercised in a real browser, not here).
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { CrashHistory } from "./CrashHistory";
 import * as crashApi from "../api/crashPatterns";
 import type { CrashPatternsResponse, JourneyResponse } from "../api/types";
@@ -145,10 +145,16 @@ describe("CrashHistory", () => {
     // The densest bin is called out with its nearest stop by name.
     expect(screen.getByText(/mile 12 of I-80/)).toBeInTheDocument();
     expect(screen.getByText(/near Donner Summit/)).toBeInTheDocument();
-    // Every stem carries a hover title naming its mile, count and cause.
-    expect(
-      screen.getByText(/Mile 12 of I-80 — 9 crashes in snow weather, most often Unsafe Speed/),
-    ).toBeInTheDocument();
+    // Hovering a stem pops the mile's card (where, matched forecast, years);
+    // leaving dismisses it, so the later cause-list assertions see one match.
+    const stem = screen.getByLabelText(/Mile 12 of I-80: 9 crashes/);
+    fireEvent.mouseOver(stem);
+    expect(screen.getByText(/9 crashes in\s+similar weather/)).toBeInTheDocument();
+    expect(screen.getByText("Forecast here")).toBeInTheDocument();
+    expect(screen.getByText("snow")).toBeInTheDocument();
+    expect(screen.getByText("2017–2025")).toBeInTheDocument();
+    fireEvent.mouseOut(stem);
+    expect(screen.queryByText("Forecast here")).not.toBeInTheDocument();
     // Cause bars and the factual footer (count and fatality share, once).
     expect(screen.getByText("Unsafe Speed")).toBeInTheDocument();
     expect(screen.getByText(/based on 16 recorded crashes/i)).toBeInTheDocument();

@@ -93,11 +93,16 @@ function nearestStopName(journey: JourneyResponse, bin: CrashBin): string {
 export function InsightSection({ journey, data }: Props) {
   const sectionRef = useReveal<HTMLElement>(journey)
   const { strips, top } = useMemo(() => buildStrips(journey, data.bins), [journey, data.bins])
+  // The hovered stem, for the strip's popup (same card the map popup shows,
+  // in the panel's ochre). Cleared on data change so it never names a bin
+  // from the previous journey.
+  const [hover, setHover] = useState<{ routeId: string; dot: StripDot } | null>(null)
 
   // animate cause bars in from 0 on data change
   const [barsIn, setBarsIn] = useState(false)
   useEffect(() => {
     setBarsIn(false)
+    setHover(null)
     const id = window.requestAnimationFrame(() => window.requestAnimationFrame(() => setBarsIn(true)))
     return () => window.cancelAnimationFrame(id)
   }, [data])
@@ -126,16 +131,35 @@ export function InsightSection({ journey, data }: Props) {
               <span className="strip-name">
                 {strip.routeId} · {strip.routeName}
               </span>
+              {/* Hovering a stem pops the same card the map popup shows, in
+                  the panel's ochre - the axis alone cannot place one dot. */}
+              {hover?.routeId === strip.routeId && (
+                <div
+                  className="strip-pop"
+                  style={{ left: `${Math.min(82, Math.max(18, (hover.dot.x / W) * 100))}%` }}
+                >
+                  <span className="pop-h">
+                    {hover.dot.bin.crashCount} crash{hover.dot.bin.crashCount === 1 ? '' : 'es'} in
+                    similar weather
+                  </span>
+                  <div className="pop-row"><span>Where</span><b>mile {hover.dot.bin.mileBin} of {strip.routeId}</b></div>
+                  <div className="pop-row"><span>Forecast here</span><b>{regimeProse(hover.dot.bin.regime)}</b></div>
+                  <div className="pop-row"><span>Most common</span><b>{hover.dot.bin.topCause ?? 'Unknown'}</b></div>
+                  <div className="pop-row"><span>Years</span><b>{hover.dot.bin.firstCrashDate.slice(0, 4)}–{hover.dot.bin.lastCrashDate.slice(0, 4)}</b></div>
+                </div>
+              )}
               <div className="profile-wrap">
                 <svg className="profile" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
                   <line x1="0" y1={BASE_Y} x2={W} y2={BASE_Y} stroke="#E7DFC8" strokeWidth="1.5" opacity="0.5" />
                   {strip.dots.map((dot) => (
-                    <g key={dot.bin.mileBin} opacity={dot.isHot ? 1 : 0.55}>
-                      {/* Native SVG tooltip: hovering a stem names its mile,
-                          since the axis alone cannot place a single dot. */}
-                      <title>
-                        {`Mile ${dot.bin.mileBin} of ${strip.routeId} — ${dot.bin.crashCount} crash${dot.bin.crashCount === 1 ? '' : 'es'} in ${regimeProse(dot.bin.regime)} weather, most often ${dot.bin.topCause ?? 'unknown'}`}
-                      </title>
+                    <g
+                      key={dot.bin.mileBin}
+                      opacity={dot.isHot ? 1 : 0.55}
+                      role="img"
+                      aria-label={`Mile ${dot.bin.mileBin} of ${strip.routeId}: ${dot.bin.crashCount} crash${dot.bin.crashCount === 1 ? '' : 'es'}`}
+                      onMouseEnter={() => setHover({ routeId: strip.routeId, dot })}
+                      onMouseLeave={() => setHover(null)}
+                    >
                       <line
                         x1={dot.x} y1={dot.stemTop} x2={dot.x} y2={BASE_Y}
                         stroke={dot.isHot ? '#B87C24' : '#8E9AA6'} strokeWidth="1" strokeDasharray="2 3"
