@@ -12,9 +12,10 @@ Output (committed, read into memory by the API like the route catalogue):
 
 * ``towns``    - the picker's directory: slug -> {name, lat, lon}
 * ``journeys`` - "{slugA}|{slugB}" (slugs sorted) -> {towns: [slug ...], routes,
-                 anchors, miles, minutes}, the anchor towns along that drive in
-                 A->B order, the highways it follows, and per highway each
-                 on-road stop's mile measure (leg_anchor_miles)
+                 anchors, driven, miles, minutes}, the anchor towns along that
+                 drive in A->B order, the highways it follows, per highway each
+                 on-road stop's mile measure (leg_anchor_miles), and per highway
+                 the mile-bin ranges the drive actually covers (driven_bins)
 
 This is a build-time tool, run rarely and by hand; nothing at build or run time
 depends on OSRM being up. Re-run it only when the catalogue's towns change:
@@ -30,7 +31,8 @@ import time
 from pathlib import Path
 
 from pipeline.fetch import get_json
-from pipeline.geo import cumulative_miles, project_to_polyline
+from pipeline.geo import cumulative_miles, point_at_measure, project_to_polyline
+from pipeline.polylines import BUFFER_MILES
 from pipeline.routes import ROUTES, town_slug
 
 log = logging.getLogger(__name__)
@@ -161,6 +163,62 @@ def leg_anchor_miles(
     return anchors
 
 
+# A road mile counts as driven when its centre sits within the crash loader's
+# 700 m buffer of the drive line, plus slack for the decimation below - the
+# same "is this point on this road" test crashes pass, so the map's marks and
+# the drive's extent agree about what "on the road" means.
+_DRIVEN_TOLERANCE_MILES = BUFFER_MILES + 0.25
+
+# Project against every 3rd drive vertex: cuts the mile-by-mile projection
+# cost ~3x, and the slack above absorbs the corner it cuts on hairpins.
+_DRIVE_DECIMATE = 3
+
+
+def driven_bins(
+    coordinates: list[list[float]],
+    roads: list[str],
+    geometry_for=None,
+) -> dict[str, list[list[int]]]:
+    """For each travelled road, the contiguous ranges of whole-mile bins the
+    drive actually covers on it - the drive's own OSRM geometry decides, not
+    the road's corridor. Each road mile's centre point is tested against the
+    drive line; miles within the buffer are driven. Neighbouring ranges a
+    single empty bin apart merge (sampling wobble); wider gaps are real (the
+    drive left the road and came back) and stay separate ranges.
+
+    Roads with no polyline (spurs) get no entry; the API falls back to their
+    whole corridor. ``geometry_for`` is the polyline lookup, replaceable in
+    tests.
+    """
+    if geometry_for is None:
+        geometry_for = _route_geometry
+    drive = coordinates[::_DRIVE_DECIMATE]
+    if drive[-1] != coordinates[-1]:
+        drive.append(coordinates[-1])
+    drive_cumulative = cumulative_miles(drive)
+    driven: dict[str, list[list[int]]] = {}
+    for road in dict.fromkeys(roads):
+        geometry = geometry_for(road)
+        if len(geometry) < 2:
+            continue
+        cumulative = cumulative_miles(geometry)
+        bins: list[int] = []
+        for mile in range(int(cumulative[-1]) + 1):
+            lat, lon = point_at_measure(geometry, cumulative, mile + 0.5)
+            _, offset = project_to_polyline(lat, lon, drive, drive_cumulative)
+            if offset <= _DRIVEN_TOLERANCE_MILES:
+                bins.append(mile)
+        ranges: list[list[int]] = []
+        for mile in bins:
+            if ranges and mile - ranges[-1][1] <= 2:
+                ranges[-1][1] = mile
+            else:
+                ranges.append([mile, mile])
+        if ranges:
+            driven[road] = ranges
+    return driven
+
+
 def fetch_route(a: dict, b: dict) -> dict:
     """OSRM driving route between two towns: geometry, distance, duration."""
     coords = f"{a['lon']},{a['lat']};{b['lon']},{b['lat']}"
@@ -217,6 +275,7 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "towns": ordered,
             "routes": via,
             "anchors": leg_anchor_miles(ordered, via, towns),
+            "driven": driven_bins(route["coordinates"], via),
             "miles": round(route["miles"], 1),
             "minutes": round(route["minutes"]),
         }
@@ -229,10 +288,11 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "Multi-highway journeys between catalogue towns, built by "
             "python -m pipeline.build_journeys from OSRM driving routes. For each "
             "town pair, the catalogue's weather anchors that fall along the drive, "
-            "in travel order, the highways it follows, and per highway each "
-            "on-road stop's mile measure (on the same measure axis as the crash "
-            "bins). Committed so nothing depends on OSRM at build/run time; "
-            "re-run only when the catalogue's towns change."
+            "in travel order, the highways it follows, each on-road stop's mile "
+            "measure, and the mile-bin ranges the drive actually covers per "
+            "highway (all on the same measure axis as the crash bins). Committed "
+            "so nothing depends on OSRM at build/run time; re-run when the "
+            "catalogue's towns or the route polylines change."
         ),
         "towns": towns,
         "journeys": journeys,

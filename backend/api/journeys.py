@@ -26,17 +26,20 @@ class TownPoint(BaseModel):
 
 
 class JourneyEntry(BaseModel):
-    """The anchors along one drive, ordered from the lexically-smaller town id,
-    plus the highways the drive follows (for the seasonal-pass warning) and,
-    per highway, each on-road stop's mile measure
-    (build_journeys.leg_anchor_miles). A road absent from `anchors` has no
-    measure axis (a spur) or no stop near it; its crash record covers the
-    whole corridor. Defaults to {} so index files from before anchors existed
-    still load."""
+    """One drive, ordered from the lexically-smaller town id: its anchor
+    towns, the highways it follows (for the seasonal-pass warning), per
+    highway each on-road stop's mile measure (build_journeys.leg_anchor_miles,
+    what the weather labelling hangs off), and per highway the mile-bin
+    ranges the drive's own geometry actually covers
+    (build_journeys.driven_bins, what the crash record is scoped to). A road
+    absent from `driven` has no measure axis (a spur); its crash record
+    covers the whole corridor. Defaults to {} so older index files still
+    load."""
 
     towns: list[str]
     routes: list[str]
     anchors: dict[str, dict[str, float]] = {}
+    driven: dict[str, list[tuple[int, int]]] = {}
     miles: float
     minutes: int
 
@@ -45,21 +48,23 @@ class ResolvedJourney(BaseModel):
     """A journey resolved for a specific direction: the ordered stops as
     route-independent waypoints (a journey crosses highways, so no single route
     owns them), the highways travelled in order, their per-road anchor
-    measures, plus totals."""
+    measures and driven mile-bin ranges, plus totals."""
 
     stops: list[Waypoint]
     via: list[str]
     anchors: dict[str, dict[str, float]]
+    driven: dict[str, list[tuple[int, int]]]
     miles: float
     minutes: int
 
     def span_for(self, road: str) -> tuple[float, float] | None:
-        """The [first, last] mile the drive covers on a road, bounded by its
-        anchors. None below two anchors: one point cannot bound a stretch."""
-        measures = list(self.anchors.get(road, {}).values())
-        if len(measures) < 2:
+        """The [first, last] driven mile bin on a road, from the drive's own
+        geometry. None when no driven range is known (a spur, or an index
+        from before driven ranges existed)."""
+        ranges = self.driven.get(road)
+        if not ranges:
             return None
-        return (min(measures), max(measures))
+        return (float(ranges[0][0]), float(ranges[-1][1]))
 
 
 class JourneyIndex(BaseModel):
@@ -94,10 +99,16 @@ class JourneyIndex(BaseModel):
             for slug in slugs
             if (town := self.towns.get(slug)) is not None
         ]
-        # Anchor measures live on each road's own mile axis, so unlike the
-        # stop and road lists they read the same in either direction of travel.
+        # Anchor measures and driven ranges live on each road's own mile axis,
+        # so unlike the stop and road lists they read the same in either
+        # direction of travel.
         return ResolvedJourney(
-            stops=stops, via=via, anchors=entry.anchors, miles=entry.miles, minutes=entry.minutes
+            stops=stops,
+            via=via,
+            anchors=entry.anchors,
+            driven=entry.driven,
+            miles=entry.miles,
+            minutes=entry.minutes,
         )
 
 

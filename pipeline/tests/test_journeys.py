@@ -12,7 +12,13 @@ import itertools
 import json
 from pathlib import Path
 
-from pipeline.build_journeys import leg_anchor_miles, routes_for, towns_along, unique_towns
+from pipeline.build_journeys import (
+    driven_bins,
+    leg_anchor_miles,
+    routes_for,
+    towns_along,
+    unique_towns,
+)
 from pipeline.routes import ROUTES
 
 REPO = Path(__file__).parents[2]
@@ -52,6 +58,31 @@ class TestSelection:
     def test_a_road_without_a_polyline_gets_no_anchors(self) -> None:
         # The four spur routes have no measure axis (ADR-0007).
         assert leg_anchor_miles(["west", "east"], ["SPUR"], TOWNS, geometry_for=lambda road: []) == {}
+
+    def test_driven_bins_cover_only_the_miles_the_drive_lies_on(self) -> None:
+        # The road runs ~10.7 mi along the line; the drive covers only its
+        # middle (roughly miles 2.7 to 8), so the outer miles are not driven.
+        drive = [[-120.45, 39.3], [-120.35, 39.3]]
+        driven = driven_bins(drive, ["TEST"], geometry_for=lambda road: LINE)
+        assert driven == {"TEST": [[2, 8]]}
+
+    def test_leaving_and_rejoining_a_road_makes_two_ranges(self) -> None:
+        # The drive follows the road, detours ~7 mi north (well past the
+        # buffer), and rejoins further along: the gap must stay a gap, not be
+        # bridged into one range.
+        drive = [
+            [-120.5, 39.3], [-120.44, 39.3],   # on the road, ~miles 0-3
+            [-120.44, 39.4], [-120.36, 39.4],  # off north, parallel
+            [-120.36, 39.3], [-120.3, 39.3],   # back on, ~miles 7.5-10.7
+        ]
+        driven = driven_bins(drive, ["TEST"], geometry_for=lambda road: LINE)
+        ranges = driven["TEST"]
+        assert len(ranges) == 2
+        assert ranges[0][0] == 0 and ranges[1][1] == 10
+        assert ranges[0][1] < 5 < ranges[1][0]  # the detour stays undriven
+
+    def test_a_road_without_a_polyline_gets_no_driven_ranges(self) -> None:
+        assert driven_bins([[-120.5, 39.3], [-120.3, 39.3]], ["SPUR"], geometry_for=lambda road: []) == {}
 
     def test_routes_for_names_the_highways_in_travel_order(self) -> None:
         # The classic crossing: I-80 to Truckee, SR-89 down the west shore,
@@ -104,3 +135,15 @@ class TestCommittedFile:
                 assert set(road_anchors) <= set(entry["towns"])
                 for mile in road_anchors.values():
                     assert mile >= 0.0
+
+    def test_driven_ranges_are_ordered_and_on_travelled_roads(self) -> None:
+        # Every driven range sits on a road the journey names, and a road's
+        # ranges are ascending, non-overlapping [lo, hi] whole-mile bins.
+        for entry in self.data["journeys"].values():
+            assert set(entry["driven"]) <= set(entry["routes"])
+            for ranges in entry["driven"].values():
+                assert ranges, "a driven entry is never empty"
+                previous_hi = -1
+                for lo, hi in ranges:
+                    assert previous_hi < lo <= hi
+                    previous_hi = hi

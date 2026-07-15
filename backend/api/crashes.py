@@ -3,11 +3,11 @@
 The dbt marts hold the crash record at per-mile-bin grain, one row per
 (route, mile bin, weather regime): see warehouse/ and ADR-0007. A journey is a
 request-time set of road stretches, each matched to its own forecast: the
-committed journey index carries every on-road anchor town's mile measure, and
-segment_legs cuts each road at the midpoints between anchors and labels each
-piece with its nearest anchor's forecast regime. No mart can pre-answer "what
-happened on THESE stretches in THIS weather"; instead this module composes the
-marts per request (ADR-0010):
+committed journey index carries the mile-bin ranges the drive's own geometry
+covers on each road (driven_bins) plus every on-road anchor town's mile
+measure, and segment_legs labels each driven bin with its nearest anchor's
+forecast regime. No mart can pre-answer "what happened on THESE stretches in
+THIS weather"; instead this module composes the marts per request (ADR-0010):
 
   * the occupied bins inside each segment under that segment's regime
     (mart_crash_patterns, with each bin's most common cause joined on), and
@@ -15,8 +15,9 @@ marts per request (ADR-0010):
     per-crash mart (mart_crash_conditions) because per-bin top-3 lists cannot
     be summed into an honest journey-level ranking.
 
-A road without anchors keeps its whole corridor (over-including is the safe
-direction for a crash record) under the journey's worst forecast regime.
+A road with no measure axis (a spur) keeps its whole corridor - over-including
+is the safe direction for a crash record - under its anchor's regime, or the
+journey's worst when it has none.
 
 Reads use psycopg's SYNCHRONOUS pool on purpose, with the endpoint declared
 `def` so FastAPI runs it on its worker threadpool instead of the event loop.
@@ -67,21 +68,26 @@ class Leg:
 
 def segment_legs(
     via: list[str],
+    driven: dict[str, list[tuple[int, int]]],
     anchors: dict[str, dict[str, float]],
     regimes: dict[str, str],
     fallback: str,
 ) -> list[Leg]:
     """Cut each travelled road into stretches, each matched to its own
-    forecast: the road is split at the midpoints between its anchor towns and
-    each piece takes its nearest anchor's regime. Pure, so the cutting math is
-    unit-testable without a database or a forecast.
+    forecast. The drive's own geometry decides WHERE (``driven``: the mile-bin
+    ranges the journey actually covers on the road, from the committed index);
+    the anchor towns decide WHICH WEATHER (each driven bin takes the regime of
+    its nearest anchor, so a range is split at the midpoints between anchors).
+    Pure, so the cutting math is unit-testable without a database or forecast.
 
     ``regimes`` maps town slug -> that town's forecast regime; ``fallback`` is
-    the journey's worst regime, used for a road with no anchors (its whole
-    corridor still needs a label). Stretches whose regime is UNKNOWN are
-    dropped: there is no weather to match history against, and matching
-    UNKNOWN-labelled crashes would present data gaps as a forecast. Adjacent
-    same-regime stretches merge, so a uniform-forecast road stays one leg.
+    the journey's worst regime, used for a road with no anchors. A road with
+    no driven ranges (a spur with no measure axis) keeps its whole corridor -
+    over-including is the safe direction for a crash record. Stretches whose
+    regime is UNKNOWN are dropped: there is no weather to match history
+    against, and matching UNKNOWN-labelled crashes would present data gaps as
+    a forecast. Adjacent same-regime stretches merge, so a uniform-forecast
+    range stays one leg.
     """
     legs: list[Leg] = []
     for road in dict.fromkeys(via):
@@ -90,31 +96,33 @@ def segment_legs(
             for slug, mile in anchors.get(road, {}).items()
             if slug in regimes
         )
-        if not marks:
-            if fallback != "UNKNOWN":
-                legs.append(Leg(road, None, None, fallback))
+        # The road's regime intervals: cuts at anchor midpoints (whole bins,
+        # so pieces can never overlap-count a bin); the outermost regimes
+        # extend to the road's ends. No anchors -> one fallback interval.
+        cuts = [int((marks[i][0] + marks[i + 1][0]) / 2) for i in range(len(marks) - 1)]
+        interval_regimes = [regime for _, regime in marks] or [fallback]
+
+        ranges = driven.get(road)
+        if not ranges:
+            # No measure axis for this road: the whole corridor, one label.
+            regime = interval_regimes[0] if len(marks) == 1 else fallback
+            if regime != "UNKNOWN":
+                legs.append(Leg(road, None, None, regime))
             continue
-        if len(marks) == 1:
-            # One anchor cannot bound a stretch: whole corridor, its regime.
-            if marks[0][1] != "UNKNOWN":
-                legs.append(Leg(road, None, None, marks[0][1]))
-            continue
-        # Bin-sized pieces: piece i runs from the previous cut to the midpoint
-        # bin between anchor i and anchor i+1 (the last piece to the far
-        # anchor). Cuts are whole bins so pieces can never overlap-count a bin.
-        lo_bin = int(marks[0][0])
-        hi_bin = int(marks[-1][0])
         pieces: list[Leg] = []
-        start = lo_bin
-        for i, (mile, regime) in enumerate(marks):
-            end = int((mile + marks[i + 1][0]) / 2) if i + 1 < len(marks) else hi_bin
-            if end < start:  # anchors under a mile apart: piece absorbed
-                continue
-            if pieces and pieces[-1].regime == regime:
-                pieces[-1] = Leg(road, pieces[-1].lo_bin, end, regime)
-            else:
-                pieces.append(Leg(road, start, end, regime))
-            start = end + 1
+        for lo, hi in ranges:
+            start = lo
+            for i, regime in enumerate(interval_regimes):
+                end = min(cuts[i], hi) if i < len(cuts) else hi
+                if end < start:  # interval ends before this range begins
+                    continue
+                if pieces and pieces[-1].regime == regime and pieces[-1].hi_bin == start - 1:
+                    pieces[-1] = Leg(road, pieces[-1].lo_bin, end, regime)
+                else:
+                    pieces.append(Leg(road, start, end, regime))
+                start = end + 1
+                if start > hi:
+                    break
         legs.extend(piece for piece in pieces if piece.regime != "UNKNOWN")
     return legs
 

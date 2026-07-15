@@ -6,7 +6,7 @@
       "name": "Donner Pass",
       "road_no": "80",
       "seasonal": false,
-      "note": "Only freeway across the range \u00b7 year-round",
+      "note": "Only freeway across the range · year-round",
       "towns": [
         {
           "name": "Colfax",
@@ -54,7 +54,7 @@
       "name": "Eastern Sierra corridor",
       "road_no": "395",
       "seasonal": false,
-      "note": "Runs the length of the range's eastern base \u00b7 year-round",
+      "note": "Runs the length of the range's eastern base · year-round",
       "towns": [
         {
           "name": "Bridgeport",
@@ -80,7 +80,7 @@
     },
     {
       "id": "US-6",
-      "name": "Bishop \u2192 Nevada",
+      "name": "Bishop → Nevada",
       "road_no": "6",
       "seasonal": false,
       "note": "Short stretch near Bishop into Nevada",
@@ -97,7 +97,7 @@
       "name": "Feather River Canyon",
       "road_no": "70",
       "seasonal": false,
-      "note": "Lowest / northernmost crossing \u00b7 generally year-round",
+      "note": "Lowest / northernmost crossing · generally year-round",
       "towns": [
         {
           "name": "Oroville",
@@ -116,7 +116,7 @@
       "name": "Carson Pass",
       "road_no": "88",
       "seasonal": true,
-      "note": "~8,650 ft \u00b7 seasonal",
+      "note": "~8,650 ft · seasonal",
       "towns": [
         {
           "name": "Jackson",
@@ -140,7 +140,7 @@
       "name": "Ebbetts Pass",
       "road_no": "4",
       "seasonal": true,
-      "note": "~8,730 ft \u00b7 narrow & seasonal",
+      "note": "~8,730 ft · narrow & seasonal",
       "towns": [
         {
           "name": "Arnold",
@@ -164,7 +164,7 @@
       "name": "Sonora Pass",
       "road_no": "108",
       "seasonal": true,
-      "note": "~9,620 ft \u00b7 seasonal",
+      "note": "~9,620 ft · seasonal",
       "towns": [
         {
           "name": "Sonora",
@@ -188,7 +188,7 @@
       "name": "Tioga Pass",
       "road_no": "120",
       "seasonal": true,
-      "note": "~9,945 ft \u00b7 highest pass \u00b7 through Yosemite \u00b7 closed ~Nov\u2013May",
+      "note": "~9,945 ft · highest pass · through Yosemite · closed ~Nov–May",
       "towns": [
         {
           "name": "Groveland",
@@ -217,7 +217,7 @@
       "name": "Walker Pass",
       "road_no": "178",
       "seasonal": false,
-      "note": "~5,250 ft \u00b7 only paved crossing in the southern Sierra",
+      "note": "~5,250 ft · only paved crossing in the southern Sierra",
       "towns": [
         {
           "name": "Lake Isabella",
@@ -267,11 +267,16 @@
     },
     {
       "id": "SR-89",
-      "name": "Tahoe \u2194 Monitor Pass",
+      "name": "Truckee ↔ Monitor Pass",
       "road_no": "89",
       "seasonal": true,
-      "note": "Links Tahoe to Monitor Pass (~8,310 ft) & Markleeville",
+      "note": "Links Truckee & Tahoe to Monitor Pass (~8,310 ft) & Markleeville",
       "towns": [
+        {
+          "name": "Truckee",
+          "lat": 39.328,
+          "lon": -120.1833
+        },
         {
           "name": "Tahoe City",
           "lat": 39.1658,
@@ -346,7 +351,7 @@
       "name": "Mount Rose Highway",
       "road_no": "431",
       "seasonal": true,
-      "note": "Carson Range, Nevada \u00b7 no California crash data",
+      "note": "Carson Range, Nevada · no California crash data",
       "towns": [
         {
           "name": "Incline Village",
@@ -365,7 +370,7 @@
       "name": "Yosemite via El Portal",
       "road_no": "140",
       "seasonal": false,
-      "note": "Merced River canyon \u00b7 lower snow-free approach",
+      "note": "Merced River canyon · lower snow-free approach",
       "towns": [
         {
           "name": "Mariposa",
@@ -457,10 +462,10 @@
     },
     {
       "id": "SR-168E",
-      "name": "Bishop \u2192 South Lake",
+      "name": "Bishop → South Lake",
       "road_no": "168",
       "seasonal": true,
-      "note": "Eastern SR-168 (Bishop to South Lake / Lake Sabrina) \u00b7 disconnected from west",
+      "note": "Eastern SR-168 (Bishop to South Lake / Lake Sabrina) · disconnected from west",
       "towns": [
         {
           "name": "Bishop",
@@ -493,7 +498,7 @@
       "name": "June Lake Loop",
       "road_no": "158",
       "seasonal": true,
-      "note": "June Lake Loop \u00b7 seasonal",
+      "note": "June Lake Loop · seasonal",
       "towns": [
         {
           "name": "June Lake",

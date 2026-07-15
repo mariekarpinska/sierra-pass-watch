@@ -236,6 +236,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         regimes = {stop.waypoint.id: stop.regime for stop in stops}
         legs = segment_legs(
             resolved.via,
+            resolved.driven,
             resolved.anchors,
             regimes,
             fallback=worst_regime(list(regimes.values())),

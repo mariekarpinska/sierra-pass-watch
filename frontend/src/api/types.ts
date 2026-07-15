@@ -77,11 +77,10 @@ export interface JourneyLeg {
   /** Short context, e.g. "closed ~Nov-May". */
   note: string;
   /**
-   * The [first, last] mile the drive covers on this road (the road's own mile
-   * axis, ADR-0007), bounded by the journey's anchor towns at build time.
-   * Null when the build could not bound it (fewer than two anchors on the
-   * road, or a spur with no polyline); the crash record then covers the
-   * road's whole corridor.
+   * The [first, last] mile bin the drive covers on this road (the road's own
+   * mile axis, ADR-0007), from the drive's own geometry at build time. Null
+   * when no driven range is known (a spur with no polyline); the crash
+   * record then covers the road's whole corridor.
    */
   span: [number, number] | null;
 }

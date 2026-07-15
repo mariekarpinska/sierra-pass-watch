@@ -34,18 +34,25 @@ regimes all come from one place, never from request input:
 - totals (counts, fatality share, date bounds, the under-8 small-record flag)
   derived in code from the bins.
 
-The stretches come from the committed journey index
-(`build_journeys.leg_anchor_miles`): each on-road anchor town's mile measure
-along the road's committed polyline - the same measure axis the crash bins
-live on (ADR-0007). Per request, `segment_legs` cuts each road at the
-midpoints between its anchors and labels each piece with its nearest anchor's
-departure-window regime; adjacent same-regime pieces merge, so a
-uniform-forecast road stays one leg. A road with one anchor keeps its whole
-corridor under that anchor's regime; a road with none keeps it under the
-journey's worst regime (over-including is the safe direction for a crash
-record). A stretch whose forecast is UNKNOWN matches nothing: presenting
-data gaps as weather would be a guess. Both queries scope every stretch with
-one `unnest` join over the legs.
+The stretches come from the committed journey index, which carries two things
+per travelled road, both on the road's own measure axis (ADR-0007):
+
+- **where the drive is** (`build_journeys.driven_bins`): the whole-mile bins
+  the drive's own OSRM geometry lies on, tested with the crash loader's
+  700 m buffer, distilled to contiguous ranges at build time so no geometry
+  is stored or processed at request time. A road the journey merely touches
+  contributes only its touched miles, not its corridor;
+- **where the weather is known** (`build_journeys.leg_anchor_miles`): each
+  on-road anchor town's mile measure.
+
+Per request, `segment_legs` labels each driven bin with its nearest anchor's
+departure-window regime (ranges split at the midpoints between anchors);
+adjacent same-regime pieces merge, so a uniform-forecast range stays one leg.
+A spur with no polyline has no measure axis, so its whole corridor matches
+under its anchor's regime - over-including is the safe direction for a crash
+record, and spurs have no per-mile record anyway. A stretch whose forecast is
+UNKNOWN matches nothing: presenting data gaps as weather would be a guess.
+Both queries scope every stretch with one `unnest` join over the legs.
 
 Exact regime equality, no "similar weather" blending: the classifier already
 is the similarity function, one label on the forecast and on every crash.
@@ -81,16 +88,14 @@ threadpool explicitly, keeping the sync driver off the event loop.
 
 ## Consequences
 
-- The record covers the stretch of each highway the journey actually drives,
+- The record covers the miles of each highway the journey actually drives,
   and the copy says so ("the stretch of each highway your route covers").
-  Spans are anchor-bounded, which sets their limits: a road needs two anchor
-  towns of the drive on it to have a span at all, so about half the legs (the
-  sparse southern corridors especially) carry none and honestly fall back to
-  the whole corridor - over-including is the safe direction for a crash
-  record. The mile or two between a leg's last anchor and the actual
-  interchange is likewise uncounted. If the fallback ever misleads, the fix is
-  spans measured from the OSRM drive geometry instead of the anchors, at the
-  cost of retaining that geometry through the build.
+  The driven ranges are only as good as the measure axis: where a route's
+  committed polyline detours off the modern alignment (I-80's axis follows
+  old Highway 40 over Donner Summit), both the drive and the crashes fall
+  outside the 700 m buffer for those miles, so the same few bins are missing
+  from the drive's ranges and from the marts - consistent, but a visible gap.
+  ADR-0007's provenance caveat owns this.
 - Per-stretch matching is more relevant than one worst label, but no longer
   uniformly cautious: a stretch forecast clear shows clear-weather history
   even with snow at the pass, and clear-weather slices can dominate the

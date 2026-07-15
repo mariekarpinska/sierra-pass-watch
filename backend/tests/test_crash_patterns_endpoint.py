@@ -26,12 +26,19 @@ from api.main import create_app
 from api.schemas import Waypoint
 from api.weather import get_forecast_service
 
-# The classic crossing, with anchor miles shaped like the committed index:
-# three anchors on I-80, two on SR-89, one on US-50 (whole-corridor road).
+# The classic crossing, with anchors and driven ranges shaped like the
+# committed index (real values from the Colfax - South Lake Tahoe build):
+# the drive covers most of I-80 (with the Donner-Summit polyline detour gap),
+# SR-89 from Truckee to the lake, and only the last few miles of US-50.
 ANCHORS = {
     "I-80": {"colfax": 0.0, "donner-summit": 44.1, "truckee": 54.0},
-    "SR-89": {"tahoe-city": 0.0, "south-lake-tahoe": 26.9},
+    "SR-89": {"truckee": 0.0, "tahoe-city": 14.7, "south-lake-tahoe": 41.6},
     "US-50": {"south-lake-tahoe": 59.4},
+}
+DRIVEN = {
+    "I-80": [(0, 40), (45, 52)],
+    "SR-89": [(1, 41)],
+    "US-50": [(56, 59)],
 }
 TOWNS = ["colfax", "donner-summit", "truckee", "tahoe-city", "south-lake-tahoe"]
 
@@ -44,50 +51,63 @@ FORECASTS = {
     "south-lake-tahoe": "CLEAR_DRY",
 }
 
-# What that journey and forecast must segment into: I-80 cut at the anchor
-# midpoints (miles 22 and 49), SR-89 one clear stretch, US-50 whole corridor
-# under its one anchor's forecast.
+# What that journey and forecast must segment into: only driven bins, cut at
+# the anchor midpoints (I-80 miles 22 and 49), SR-89 one clear stretch, US-50
+# just its driven tail near the lake.
 EXPECTED_LEGS = [
     Leg("I-80", 0, 22, "CLEAR_DRY"),
-    Leg("I-80", 23, 49, "SNOW"),
-    Leg("I-80", 50, 54, "CLEAR_DRY"),
-    Leg("SR-89", 0, 26, "CLEAR_DRY"),
-    Leg("US-50", None, None, "CLEAR_DRY"),
+    Leg("I-80", 23, 40, "SNOW"),
+    Leg("I-80", 45, 49, "SNOW"),
+    Leg("I-80", 50, 52, "CLEAR_DRY"),
+    Leg("SR-89", 1, 41, "CLEAR_DRY"),
+    Leg("US-50", 56, 59, "CLEAR_DRY"),
 ]
 
 
 class TestSegmentLegs:
     """The cutting math on its own: pure inputs, no app."""
 
-    def test_cuts_at_anchor_midpoints_and_labels_by_nearest_anchor(self) -> None:
-        legs = segment_legs(
-            ["I-80"], ANCHORS, FORECASTS, fallback="SNOW"
-        )
-        assert legs == EXPECTED_LEGS[:3]
+    def test_driven_ranges_cut_at_anchor_midpoints(self) -> None:
+        legs = segment_legs(["I-80"], DRIVEN, ANCHORS, FORECASTS, fallback="SNOW")
+        assert legs == EXPECTED_LEGS[:4]
 
-    def test_a_uniform_forecast_road_stays_one_leg(self) -> None:
+    def test_a_uniform_forecast_range_stays_one_leg(self) -> None:
         clear = dict.fromkeys(FORECASTS, "CLEAR_DRY")
-        legs = segment_legs(["I-80"], ANCHORS, clear, fallback="CLEAR_DRY")
-        assert legs == [Leg("I-80", 0, 54, "CLEAR_DRY")]
+        legs = segment_legs(["I-80"], DRIVEN, ANCHORS, clear, fallback="CLEAR_DRY")
+        # Same-regime pieces merge, but the real gap in the driven ranges
+        # (the polyline detour around Donner Summit) stays a gap.
+        assert legs == [
+            Leg("I-80", 0, 40, "CLEAR_DRY"),
+            Leg("I-80", 45, 52, "CLEAR_DRY"),
+        ]
 
-    def test_one_anchor_labels_the_whole_corridor(self) -> None:
-        legs = segment_legs(["US-50"], ANCHORS, FORECASTS, fallback="SNOW")
-        assert legs == [Leg("US-50", None, None, "CLEAR_DRY")]
+    def test_a_barely_touched_road_keeps_only_its_driven_tail(self) -> None:
+        legs = segment_legs(["US-50"], DRIVEN, ANCHORS, FORECASTS, fallback="SNOW")
+        assert legs == [Leg("US-50", 56, 59, "CLEAR_DRY")]
 
-    def test_a_road_with_no_anchors_takes_the_journey_fallback(self) -> None:
-        legs = segment_legs(["SR-207"], ANCHORS, FORECASTS, fallback="SNOW")
-        assert legs == [Leg("SR-207", None, None, "SNOW")]
+    def test_a_road_with_no_measure_axis_keeps_its_whole_corridor(self) -> None:
+        # A spur has no polyline, so no driven ranges and no bins; the whole
+        # corridor matches, labelled by its one anchor when it has one, else
+        # by the journey's worst regime.
+        spur_anchor = {"SR-207": {"stateline": 3.0}}
+        spur_forecast = {"stateline": "HIGH_WIND"}
+        assert segment_legs(["SR-207"], {}, spur_anchor, spur_forecast, "SNOW") == [
+            Leg("SR-207", None, None, "HIGH_WIND")
+        ]
+        assert segment_legs(["SR-207"], {}, {}, FORECASTS, "SNOW") == [
+            Leg("SR-207", None, None, "SNOW")
+        ]
 
     def test_unknown_stretches_are_dropped_not_guessed(self) -> None:
         gappy = {**FORECASTS, "donner-summit": "UNKNOWN"}
-        legs = segment_legs(["I-80"], ANCHORS, gappy, fallback="CLEAR_DRY")
+        legs = segment_legs(["I-80"], DRIVEN, ANCHORS, gappy, fallback="CLEAR_DRY")
         # The pass has no forecast, so its stretch matches nothing; the clear
-        # ends survive unmerged (bins 23-49 are honestly absent).
+        # ends survive unmerged (the snow bins are honestly absent).
         assert legs == [
             Leg("I-80", 0, 22, "CLEAR_DRY"),
-            Leg("I-80", 50, 54, "CLEAR_DRY"),
+            Leg("I-80", 50, 52, "CLEAR_DRY"),
         ]
-        assert segment_legs(["SR-207"], ANCHORS, gappy, fallback="UNKNOWN") == []
+        assert segment_legs(["SR-207"], {}, {}, gappy, fallback="UNKNOWN") == []
 
 
 # Two bins on I-80 (one per matched regime), one on US-50.
@@ -165,6 +185,7 @@ class _FakeIndex:
             ],
             via=["I-80", "SR-89", "US-50"],
             anchors=ANCHORS,
+            driven=DRIVEN,
             miles=93.5,
             minutes=130,
         )
@@ -215,9 +236,9 @@ def test_returns_the_record_in_camel_case(client, store) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    # The forecast turned into span-bounded, regime-labelled stretches: snow
-    # history around the pass, clear history at the ends, and both store
-    # reads asked for exactly those.
+    # The forecast turned into driven, regime-labelled stretches: snow
+    # history around the pass, clear history at the ends, only driven miles
+    # anywhere - and both store reads asked for exactly those.
     assert store.calls == [EXPECTED_LEGS]
     # No single journey regime exists any more - each bin carries its own.
     assert "regime" not in body

@@ -90,11 +90,10 @@ class JourneyLeg(CamelModel):
     name: str
     seasonal: bool
     note: str
-    # The [first, last] mile the drive covers on this road (the road's own
-    # measure axis, ADR-0007), bounded by the journey's anchor towns at build
-    # time. None when the build could not bound it (fewer than two anchors on
-    # the road, or a spur with no polyline); the crash record then covers the
-    # road's whole corridor.
+    # The [first, last] mile bin the drive covers on this road (the road's
+    # own measure axis, ADR-0007), from the drive's own geometry at build
+    # time. None when no driven range is known (a spur with no polyline); the
+    # crash record then covers the road's whole corridor.
     span: tuple[float, float] | None = None
 
 
