@@ -278,7 +278,10 @@ section{ position:relative; }
 .strip-name{ display:block; font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--granite); margin-bottom:.4rem; }
 .profile-wrap{ background:linear-gradient(180deg,#232A20,#1A1F16); border-radius:12px; overflow:hidden; border:1px solid var(--line-soft); }
 .profile{ width:100%; height:auto; display:block; }
-.profile g{ cursor:help; } /* each stem carries a hover title naming its mile */
+.profile g{ cursor:help; outline:none; } /* each stem pops the mile's card on hover or focus */
+/* Keyboard focus gets its own indicator (the default outline box reads oddly
+   on a bare svg group): the focused stem's dot lights up in ochre. */
+.profile g:focus-visible circle{ stroke:var(--amber); stroke-width:3; }
 .profile-axis{ display:flex; justify-content:space-between; margin-top:.5rem; font-family:var(--mono); font-size:.66rem; color:var(--granite); }
 .insight-caption{ margin-top:1.1rem; font-size:.95rem; line-height:1.6; color:var(--ink); }
 .insight-caption.soft{ color:var(--ink-soft); font-size:.85rem; }

@@ -157,8 +157,11 @@ export function InsightSection({ journey, data }: Props) {
                       opacity={dot.isHot ? 1 : 0.55}
                       role="img"
                       aria-label={`Mile ${dot.bin.mileBin} of ${strip.routeId}: ${dot.bin.crashCount} crash${dot.bin.crashCount === 1 ? '' : 'es'}`}
+                      tabIndex={0}
                       onMouseEnter={() => setHover({ routeId: strip.routeId, dot })}
                       onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover({ routeId: strip.routeId, dot })}
+                      onBlur={() => setHover(null)}
                     >
                       <line
                         x1={dot.x} y1={dot.stemTop} x2={dot.x} y2={BASE_Y}

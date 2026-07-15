@@ -155,6 +155,11 @@ describe("CrashHistory", () => {
     expect(screen.getByText("2017–2025")).toBeInTheDocument();
     fireEvent.mouseOut(stem);
     expect(screen.queryByText("Forecast here")).not.toBeInTheDocument();
+    // Keyboard users get the same card: tabbing to a stem opens it too.
+    fireEvent.focus(stem);
+    expect(screen.getByText("Forecast here")).toBeInTheDocument();
+    fireEvent.blur(stem);
+    expect(screen.queryByText("Forecast here")).not.toBeInTheDocument();
     // Cause bars and the factual footer (count and fatality share, once).
     expect(screen.getByText("Unsafe Speed")).toBeInTheDocument();
     expect(screen.getByText(/based on 16 recorded crashes/i)).toBeInTheDocument();
