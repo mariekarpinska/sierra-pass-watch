@@ -3,6 +3,16 @@
 A running record of how security was considered as this repository evolved.
 Each change that touches the security posture appends a dated section.
 
+## 2026-07-15 - feat/route-overview-live (route line + elevations)
+
+- **No new outbound call and no new database read.** `/api/journey-path`
+  slices the committed route polylines to the journey's driven miles in
+  memory; town elevations were fetched once at build time (Open-Meteo's
+  elevation API, the already-trusted upstream) and hardcoded into the
+  catalogue.
+- **Inputs stay bounded.** `from`/`to` are catalogue town ids resolved
+  against the committed journey index, exactly like `/api/journey`.
+
 ## 2026-07-14 - feat/crash-patterns-live (database read posture)
 
 - **The API talks to Postgres again** (the first query since the journey

@@ -2,8 +2,8 @@
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
 field, and only what the UI consumes exists: /api/health, /api/towns,
-/api/journey, /api/crash-patterns. A later branch adds the alerts feed,
-bringing its own contract when it lands.
+/api/journey, /api/journey-path, /api/crash-patterns. A later branch adds
+the alerts feed, bringing its own contract when it lands.
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -34,10 +34,12 @@ from api.crashes import (
 )
 from api.journeys import JourneyIndex, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
+from api.paths import driven_paths
 from api.schemas import (
     CrashPatternsResponse,
     Health,
     JourneyLeg,
+    JourneyPathResponse,
     JourneyResponse,
     Waypoint,
 )
@@ -125,7 +127,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/towns", response_model=list[Waypoint])
     def towns(index: JourneyIndex = Depends(get_journey_index)) -> list[Waypoint]:
         return [
-            Waypoint(id=slug, name=point.name, lat=point.lat, lon=point.lon)
+            Waypoint(
+                id=slug,
+                name=point.name,
+                lat=point.lat,
+                lon=point.lon,
+                elevation_ft=point.elevation_ft,
+            )
             for slug, point in sorted(index.towns.items(), key=lambda kv: kv[1].name)
         ]
 
@@ -188,6 +196,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total_minutes=resolved.minutes,
             stops=stops,
         )
+
+    # The drive's road line for the route-overview map: the committed route
+    # polylines sliced to the journey's driven miles (api/paths.py). Pure
+    # in-memory geometry - no database and no outbound call - so a plain
+    # `def` on the worker threadpool is plenty. Params mirror /api/journey.
+    @app.get("/api/journey-path", response_model=JourneyPathResponse)
+    def journey_path(
+        from_: str | None = Query(default=None, alias="from"),
+        to: str | None = None,
+        index: JourneyIndex = Depends(get_journey_index),
+    ):
+        if not from_ or not to:
+            return JSONResponse(
+                status_code=400, content={"error": "from and to are required"}
+            )
+        if from_ == to:
+            return JSONResponse(
+                status_code=400, content={"error": "from and to must be different towns"}
+            )
+        resolved = index.resolve(from_, to)
+        if resolved is None:
+            return JSONResponse(
+                status_code=404, content={"error": "unknown town or journey"}
+            )
+        return JourneyPathResponse(paths=driven_paths(resolved.driven))
 
     # The crash record for a journey, each stretch matched to its own
     # forecast: totals, occupied per-mile bins, top causes (from the dbt

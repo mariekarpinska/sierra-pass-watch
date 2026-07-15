@@ -63,6 +63,9 @@ class Waypoint(CamelModel):
     name: str
     lat: float
     lon: float
+    # Elevation in feet at the town's coordinate - a catalogue fact, fetched
+    # once at build time. None only for index files from before it existed.
+    elevation_ft: int | None = None
 
 
 class WaypointForecast(CamelModel):
@@ -152,6 +155,17 @@ class CrashPatternsResponse(CamelModel):
     last_crash_date: str | None
     bins: list[CrashBin]
     top_causes: list[CauseStat]
+
+
+class JourneyPathResponse(CamelModel):
+    """GET /api/journey-path?from=&to=
+
+    The drive's road line for the route-overview map: one [lat, lon] path per
+    continuously-driven stretch, the committed route polylines sliced to the
+    journey's driven miles. Purely geometric - no counts, no judgement.
+    """
+
+    paths: list[list[tuple[float, float]]]
 
 
 class JourneyResponse(CamelModel):

@@ -40,6 +40,15 @@ def route_length_miles(route_id: str) -> float | None:
     return None if entry is None else entry[1][-1]
 
 
+def geometry_for(route_id: str) -> tuple[list[list[float]], list[float]] | None:
+    """The route's polyline and cumulative measures, or None (spurs).
+
+    The read side for anything that walks a route's geometry - the crash
+    loader projects onto it here (measure_for); the API slices it to a
+    journey's driven miles (api/paths.py)."""
+    return _polylines().get(route_id)
+
+
 def measure_for(route_id: str, lat: float, lon: float) -> float | None:
     """Distance-along-route (miles) for a point, or None.
 
