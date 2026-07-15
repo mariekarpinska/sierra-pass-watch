@@ -32,9 +32,9 @@ from api.crashes import (
     get_crash_store,
     segment_legs,
 )
-from api.journeys import JourneyIndex, get_journey_index
+from api.journeys import JourneyIndex, ResolvedJourney, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
-from api.paths import driven_paths
+from api.paths import RouteGeometry, driven_paths, get_geometry
 from api.schemas import (
     CrashPatternsResponse,
     Health,
@@ -60,6 +60,34 @@ log = logging.getLogger(__name__)
 logging.getLogger().addFilter(CorrelationIdFilter())
 
 
+def resolve_or_error(
+    index: JourneyIndex, from_: str | None, to: str | None
+) -> ResolvedJourney | JSONResponse:
+    """The front door the three journey endpoints share: turn a from/to town
+    pair into a resolved journey, or the matching error response. from and to
+    must both be present and different, and the pair must exist in the index.
+    Endpoints that also take a departure validate that themselves. Returning
+    the error as a value (not raising) keeps each endpoint a flat read, and
+    puts the one validation ladder in one place so the three cannot drift.
+    """
+    if not from_ or not to:
+        return JSONResponse(
+            status_code=400, content={"error": "from and to are required"}
+        )
+    # The index stores no self-pairs, so without this check a same-town request
+    # would fall through to a misleading 404 "unknown town".
+    if from_ == to:
+        return JSONResponse(
+            status_code=400, content={"error": "from and to must be different towns"}
+        )
+    resolved = index.resolve(from_, to)
+    if resolved is None:
+        return JSONResponse(
+            status_code=404, content={"error": "unknown town or journey"}
+        )
+    return resolved
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. Using a factory (not a module-level app) lets each test
     build its own isolated instance and pass its own Settings."""
@@ -71,6 +99,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # request after that is served from memory.
         app.state.catalog = RouteCatalog.load(settings.shared_dir)
         app.state.journeys = JourneyIndex.load(settings.shared_dir)
+        # The road-line geometry loads from the same directory as the journey
+        # index, so /api/journey-path slices the polylines that were built
+        # alongside the index it is given (not a copy baked into the source).
+        app.state.geometry = RouteGeometry.load(settings.shared_dir)
         # One HTTP client for Open-Meteo: fixed base URL plus a hard timeout, so
         # the SSRF and timeout guards live here, not at each call site. The
         # service holds the 5-minute per-coordinate cache for the process life.
@@ -127,13 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/towns", response_model=list[Waypoint])
     def towns(index: JourneyIndex = Depends(get_journey_index)) -> list[Waypoint]:
         return [
-            Waypoint(
-                id=slug,
-                name=point.name,
-                lat=point.lat,
-                lon=point.lon,
-                elevation_ft=point.elevation_ft,
-            )
+            point.to_waypoint(slug)
             for slug, point in sorted(index.towns.items(), key=lambda kv: kv[1].name)
         ]
 
@@ -150,26 +176,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         index: JourneyIndex = Depends(get_journey_index),
         catalog: RouteCatalog = Depends(get_catalog),
     ):
-        if not from_ or not to or not departure:
+        # Departure is this endpoint's own required param, checked before the
+        # shared town-pair resolve so a missing one is a 400, not a 404.
+        if not departure:
             return JSONResponse(
                 status_code=400, content={"error": "from, to and departure are required"}
             )
-        # The index stores no self-pairs, so without this check a same-town
-        # request would fall through to a misleading 404 "unknown town".
-        if from_ == to:
-            return JSONResponse(
-                status_code=400, content={"error": "from and to must be different towns"}
-            )
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
         try:
             departure_at = parse_departure(departure)
         except ValueError:
             return JSONResponse(
                 status_code=400, content={"error": "departure must be an ISO 8601 time"}
-            )
-        resolved = index.resolve(from_, to)
-        if resolved is None:
-            return JSONResponse(
-                status_code=404, content={"error": "unknown town or journey"}
             )
         stops = await service.forecast_towns(resolved.stops, departure_at)
         # The highways travelled, with the catalogue's seasonal context, so
@@ -206,21 +226,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from_: str | None = Query(default=None, alias="from"),
         to: str | None = None,
         index: JourneyIndex = Depends(get_journey_index),
+        geometry: RouteGeometry = Depends(get_geometry),
     ):
-        if not from_ or not to:
-            return JSONResponse(
-                status_code=400, content={"error": "from and to are required"}
-            )
-        if from_ == to:
-            return JSONResponse(
-                status_code=400, content={"error": "from and to must be different towns"}
-            )
-        resolved = index.resolve(from_, to)
-        if resolved is None:
-            return JSONResponse(
-                status_code=404, content={"error": "unknown town or journey"}
-            )
-        return JourneyPathResponse(paths=driven_paths(resolved.driven))
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
+        return JourneyPathResponse(
+            paths=driven_paths(resolved.driven, geometry.geometry_for)
+        )
 
     # The crash record for a journey, each stretch matched to its own
     # forecast: totals, occupied per-mile bins, top causes (from the dbt
@@ -243,25 +256,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         index: JourneyIndex = Depends(get_journey_index),
         service: ForecastService = Depends(get_forecast_service),
     ):
-        if not from_ or not to or not departure:
+        # Departure is this endpoint's own required param, checked before the
+        # shared town-pair resolve so a missing one is a 400, not a 404.
+        if not departure:
             return JSONResponse(
                 status_code=400,
                 content={"error": "from, to and departure are required"},
             )
-        if from_ == to:
-            return JSONResponse(
-                status_code=400, content={"error": "from and to must be different towns"}
-            )
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
         try:
             departure_at = parse_departure(departure)
         except ValueError:
             return JSONResponse(
                 status_code=400, content={"error": "departure must be an ISO 8601 time"}
-            )
-        resolved = index.resolve(from_, to)
-        if resolved is None:
-            return JSONResponse(
-                status_code=404, content={"error": "unknown town or journey"}
             )
         # Each stop's departure-window forecast; the journey request just made
         # the same calls, so the service's 5-minute cache usually answers.

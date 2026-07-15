@@ -23,14 +23,24 @@ BUFFER_MILES = 700 / 1609.344
 _cache: dict[str, tuple[list[list[float]], list[float]]] | None = None
 
 
+def load_route_geometries(
+    polylines_file: Path,
+) -> dict[str, tuple[list[list[float]], list[float]]]:
+    """Read a route-polylines.json and precompute each route's cumulative
+    measure axis. Shared by the build-time module cache below and the API's
+    per-deployment geometry (api/paths.py), so both read the file the same way
+    from whichever directory they are given."""
+    raw = json.loads(polylines_file.read_text(encoding="utf-8"))["routes"]
+    return {
+        route_id: (entry["coordinates"], cumulative_miles(entry["coordinates"]))
+        for route_id, entry in raw.items()
+    }
+
+
 def _polylines() -> dict[str, tuple[list[list[float]], list[float]]]:
     global _cache  # noqa: PLW0603 — module-level lazy load, like routes.py's ring
     if _cache is None:
-        raw = json.loads(POLYLINES_FILE.read_text(encoding="utf-8"))["routes"]
-        _cache = {
-            route_id: (entry["coordinates"], cumulative_miles(entry["coordinates"]))
-            for route_id, entry in raw.items()
-        }
+        _cache = load_route_geometries(POLYLINES_FILE)
     return _cache
 
 
