@@ -163,15 +163,21 @@ def leg_anchor_miles(
     return anchors
 
 
-# A road mile counts as driven when its centre sits within the crash loader's
-# 700 m buffer of the drive line, plus slack for the decimation below - the
-# same "is this point on this road" test crashes pass, so the map's marks and
-# the drive's extent agree about what "on the road" means.
-_DRIVEN_TOLERANCE_MILES = BUFFER_MILES + 0.25
+# The mile-by-mile distance test below runs against a THINNED copy of the
+# drive line - every 3rd point of OSRM's ~thousands - which makes it ~3x
+# faster. The cost: straight lines between kept points cut across the inside
+# of sharp bends, so at a hairpin the thinned line can sit up to ~0.25 mi
+# away from where the car actually drove. The second constant widens the
+# test by exactly that much. One knob: keep fewer points and the allowance
+# must grow, or miles on switchbacks stop counting as driven.
+_DRIVE_DECIMATE = 3  # keep every 3rd point of the drive line
+_DECIMATION_SLACK_MILES = 0.25  # worst gap between thinned and real line
 
-# Project against every 3rd drive vertex: cuts the mile-by-mile projection
-# cost ~3x, and the slack above absorbs the corner it cuts on hairpins.
-_DRIVE_DECIMATE = 3
+# A road mile counts as driven when its centre point lies within BUFFER_MILES
+# of the thinned drive line (the same 700 m that attaches a crash to a road,
+# so the marks and the drive agree on what "on the road" means), plus the
+# thinning allowance above.
+_DRIVEN_TOLERANCE_MILES = BUFFER_MILES + _DECIMATION_SLACK_MILES
 
 
 def driven_bins(
