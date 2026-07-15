@@ -31,7 +31,10 @@ export function CrashMapSection({ journey, regime, data }: Props) {
     draw: (layer, map) => {
       data.bins.forEach((bin) => {
         const n = bin.crashCount
-        const radius = 7 + Math.min(26, Math.sqrt(n) * 7)
+        // Tuned by eye: dense corridors occupy most consecutive miles, so the
+        // marks must stay small enough not to fuse into a band that hides the
+        // route - a one-crash mark at radius 3.5, the cap at 10.75.
+        const radius = 1 + Math.min(9.75, Math.sqrt(n) * 2.5)
         // calm: muted sage, size = density. no red.
         const marker = L.circleMarker([bin.lat, bin.lon], {
           radius,

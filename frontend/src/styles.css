@@ -293,9 +293,9 @@ section{ position:relative; }
 .scale-h{ font-size:.72rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--granite); display:block; margin-bottom:.7rem; }
 .scale-row{ display:flex; align-items:center; gap:.7rem; margin-bottom:.6rem; font-size:.82rem; color:var(--ink-soft); }
 .scale-dot{ display:block; border-radius:50%; background:rgba(157,177,131,.32); border:1.5px solid var(--sage); flex:none; }
-.scale-dot.s1{ width:10px; height:10px; }
-.scale-dot.s2{ width:17px; height:17px; }
-.scale-dot.s3{ width:26px; height:26px; }
+.scale-dot.s1{ width:7px; height:7px; }
+.scale-dot.s2{ width:13px; height:13px; }
+.scale-dot.s3{ width:22px; height:22px; }
 .leaflet-popup-content-wrapper{ border-radius:12px; background:var(--card); color:var(--ink); box-shadow:var(--shadow-md); }
 .leaflet-popup-tip{ background:var(--card); }
 .leaflet-popup-content{ font-family:var(--sans); font-size:.84rem; color:var(--ink); margin:.8rem 1rem; }
