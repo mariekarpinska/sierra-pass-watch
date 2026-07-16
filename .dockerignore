@@ -1,0 +1,34 @@
+# Keep the Docker build context small and the image clean. Anything listed here
+# is NOT sent to the Docker daemon when building backend/Dockerfile, so builds
+# are faster and no local secrets or junk can leak into an image layer.
+
+# Local secrets and env
+.env
+*.local
+
+# Version control and CI
+.git/
+.github/
+
+# Python local artifacts
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node / frontend (the backend image never needs these)
+frontend/
+node_modules/
+
+# Data, warehouse build output, infra, docs — not needed to run the API
+data/
+warehouse/target/
+warehouse/dbt_packages/
+warehouse/logs/
+infra/
+docs/
+temporary screenshots/
+*.md
