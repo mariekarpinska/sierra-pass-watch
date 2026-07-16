@@ -2,8 +2,8 @@
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
 field, and only what the UI consumes exists: /api/health, /api/towns,
-/api/journey, /api/crash-patterns. A later branch adds the alerts feed,
-bringing its own contract when it lands.
+/api/journey, /api/journey-path, /api/crash-patterns. A later branch adds
+the alerts feed, bringing its own contract when it lands.
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -32,12 +32,14 @@ from api.crashes import (
     get_crash_store,
     segment_legs,
 )
-from api.journeys import JourneyIndex, get_journey_index
+from api.journeys import JourneyIndex, ResolvedJourney, get_journey_index
 from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
+from api.paths import DriveLines, get_drive_lines
 from api.schemas import (
     CrashPatternsResponse,
     Health,
     JourneyLeg,
+    JourneyPathResponse,
     JourneyResponse,
     Waypoint,
 )
@@ -58,6 +60,34 @@ log = logging.getLogger(__name__)
 logging.getLogger().addFilter(CorrelationIdFilter())
 
 
+def resolve_or_error(
+    index: JourneyIndex, from_: str | None, to: str | None
+) -> ResolvedJourney | JSONResponse:
+    """The front door the three journey endpoints share: turn a from/to town
+    pair into a resolved journey, or the matching error response. from and to
+    must both be present and different, and the pair must exist in the index.
+    Endpoints that also take a departure validate that themselves. Returning
+    the error as a value (not raising) keeps each endpoint a flat read, and
+    puts the one validation ladder in one place so the three cannot drift.
+    """
+    if not from_ or not to:
+        return JSONResponse(
+            status_code=400, content={"error": "from and to are required"}
+        )
+    # The index stores no self-pairs, so without this check a same-town request
+    # would fall through to a misleading 404 "unknown town".
+    if from_ == to:
+        return JSONResponse(
+            status_code=400, content={"error": "from and to must be different towns"}
+        )
+    resolved = index.resolve(from_, to)
+    if resolved is None:
+        return JSONResponse(
+            status_code=404, content={"error": "unknown town or journey"}
+        )
+    return resolved
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. Using a factory (not a module-level app) lets each test
     build its own isolated instance and pass its own Settings."""
@@ -69,6 +99,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # request after that is served from memory.
         app.state.catalog = RouteCatalog.load(settings.shared_dir)
         app.state.journeys = JourneyIndex.load(settings.shared_dir)
+        # The drive lines load from the same directory as the journey index, so
+        # /api/journey-path serves the line built alongside the index it is
+        # given (not a copy baked into the source).
+        app.state.drive_lines = DriveLines.load(settings.shared_dir)
         # One HTTP client for Open-Meteo: fixed base URL plus a hard timeout, so
         # the SSRF and timeout guards live here, not at each call site. The
         # service holds the 5-minute per-coordinate cache for the process life.
@@ -125,7 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/towns", response_model=list[Waypoint])
     def towns(index: JourneyIndex = Depends(get_journey_index)) -> list[Waypoint]:
         return [
-            Waypoint(id=slug, name=point.name, lat=point.lat, lon=point.lon)
+            point.to_waypoint(slug)
             for slug, point in sorted(index.towns.items(), key=lambda kv: kv[1].name)
         ]
 
@@ -142,26 +176,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         index: JourneyIndex = Depends(get_journey_index),
         catalog: RouteCatalog = Depends(get_catalog),
     ):
-        if not from_ or not to or not departure:
+        # Departure is this endpoint's own required param, checked before the
+        # shared town-pair resolve so a missing one is a 400, not a 404.
+        if not departure:
             return JSONResponse(
                 status_code=400, content={"error": "from, to and departure are required"}
             )
-        # The index stores no self-pairs, so without this check a same-town
-        # request would fall through to a misleading 404 "unknown town".
-        if from_ == to:
-            return JSONResponse(
-                status_code=400, content={"error": "from and to must be different towns"}
-            )
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
         try:
             departure_at = parse_departure(departure)
         except ValueError:
             return JSONResponse(
                 status_code=400, content={"error": "departure must be an ISO 8601 time"}
-            )
-        resolved = index.resolve(from_, to)
-        if resolved is None:
-            return JSONResponse(
-                status_code=404, content={"error": "unknown town or journey"}
             )
         stops = await service.forecast_towns(resolved.stops, departure_at)
         # The highways travelled, with the catalogue's seasonal context, so
@@ -189,6 +217,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stops=stops,
         )
 
+    # The drive's road line for the route-overview map: the whole drive, stored
+    # as one committed polyline per town pair (api/paths.py). A plain in-memory
+    # lookup - no database and no outbound call - so a plain `def` on the worker
+    # threadpool is plenty. Params mirror /api/journey. The pair is validated
+    # against the same index the other endpoints use, so an unknown town or an
+    # unbuilt pair is a 404 here too.
+    @app.get("/api/journey-path", response_model=JourneyPathResponse)
+    def journey_path(
+        from_: str | None = Query(default=None, alias="from"),
+        to: str | None = None,
+        index: JourneyIndex = Depends(get_journey_index),
+        lines: DriveLines = Depends(get_drive_lines),
+    ):
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
+        # One continuous line for the whole drive; wrapped in a list so the
+        # response shape (a list of paths) is unchanged for the frontend.
+        line = lines.line_for(from_, to)
+        return JourneyPathResponse(paths=[line] if line else [])
+
     # The crash record for a journey, each stretch matched to its own
     # forecast: totals, occupied per-mile bins, top causes (from the dbt
     # marts, composed per request - ADR-0010). The journey is named by its
@@ -210,25 +259,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         index: JourneyIndex = Depends(get_journey_index),
         service: ForecastService = Depends(get_forecast_service),
     ):
-        if not from_ or not to or not departure:
+        # Departure is this endpoint's own required param, checked before the
+        # shared town-pair resolve so a missing one is a 400, not a 404.
+        if not departure:
             return JSONResponse(
                 status_code=400,
                 content={"error": "from, to and departure are required"},
             )
-        if from_ == to:
-            return JSONResponse(
-                status_code=400, content={"error": "from and to must be different towns"}
-            )
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
         try:
             departure_at = parse_departure(departure)
         except ValueError:
             return JSONResponse(
                 status_code=400, content={"error": "departure must be an ISO 8601 time"}
-            )
-        resolved = index.resolve(from_, to)
-        if resolved is None:
-            return JSONResponse(
-                status_code=404, content={"error": "unknown town or journey"}
             )
         # Each stop's departure-window forecast; the journey request just made
         # the same calls, so the service's 5-minute cache usually answers.

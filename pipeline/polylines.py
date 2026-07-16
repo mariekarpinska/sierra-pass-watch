@@ -23,14 +23,24 @@ BUFFER_MILES = 700 / 1609.344
 _cache: dict[str, tuple[list[list[float]], list[float]]] | None = None
 
 
+def load_route_geometries(
+    polylines_file: Path,
+) -> dict[str, tuple[list[list[float]], list[float]]]:
+    """Read a route-polylines.json and precompute each route's cumulative
+    measure axis. Shared by the build-time module cache below and the API's
+    per-deployment geometry (api/paths.py), so both read the file the same way
+    from whichever directory they are given."""
+    raw = json.loads(polylines_file.read_text(encoding="utf-8"))["routes"]
+    return {
+        route_id: (entry["coordinates"], cumulative_miles(entry["coordinates"]))
+        for route_id, entry in raw.items()
+    }
+
+
 def _polylines() -> dict[str, tuple[list[list[float]], list[float]]]:
     global _cache  # noqa: PLW0603 — module-level lazy load, like routes.py's ring
     if _cache is None:
-        raw = json.loads(POLYLINES_FILE.read_text(encoding="utf-8"))["routes"]
-        _cache = {
-            route_id: (entry["coordinates"], cumulative_miles(entry["coordinates"]))
-            for route_id, entry in raw.items()
-        }
+        _cache = load_route_geometries(POLYLINES_FILE)
     return _cache
 
 
@@ -38,6 +48,15 @@ def route_length_miles(route_id: str) -> float | None:
     """Total polyline length, or None for routes without one (spurs)."""
     entry = _polylines().get(route_id)
     return None if entry is None else entry[1][-1]
+
+
+def geometry_for(route_id: str) -> tuple[list[list[float]], list[float]] | None:
+    """The route's polyline and cumulative measures, or None (spurs).
+
+    The read side for anything that walks a route's geometry - the crash
+    loader projects onto it here (measure_for); the API slices it to a
+    journey's driven miles (api/paths.py)."""
+    return _polylines().get(route_id)
 
 
 def measure_for(route_id: str, lat: float, lon: float) -> float | None:

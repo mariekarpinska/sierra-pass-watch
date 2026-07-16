@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from fastapi import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.schemas import Waypoint
 
@@ -20,9 +20,26 @@ from api.schemas import Waypoint
 class TownPoint(BaseModel):
     """One town in the picker directory."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     lat: float
     lon: float
+    # Feet at the town's coordinate, from the catalogue (None only for index
+    # files from before elevations existed).
+    elevation_ft: int | None = Field(default=None, alias="elevationFt")
+
+    def to_waypoint(self, slug: str) -> Waypoint:
+        """This town as an API Waypoint under ``slug``. The one place the two
+        fields are copied across, so /api/towns and resolve() below cannot
+        drift when a field (like elevation) is added to Waypoint."""
+        return Waypoint(
+            id=slug,
+            name=self.name,
+            lat=self.lat,
+            lon=self.lon,
+            elevation_ft=self.elevation_ft,
+        )
 
 
 class JourneyEntry(BaseModel):
@@ -95,7 +112,7 @@ class JourneyIndex(BaseModel):
         slugs = entry.towns if forward else list(reversed(entry.towns))
         via = entry.routes if forward else list(reversed(entry.routes))
         stops = [
-            Waypoint(id=slug, name=town.name, lat=town.lat, lon=town.lon)
+            town.to_waypoint(slug)
             for slug in slugs
             if (town := self.towns.get(slug)) is not None
         ]

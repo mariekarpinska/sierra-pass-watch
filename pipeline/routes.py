@@ -113,6 +113,65 @@ def town_slug(name: str) -> str:
     return re.sub(r"^-|-$", "", re.sub(r"[^a-z0-9]+", "-", name.lower()))
 
 
+# Elevation in feet at each catalogue town's coordinate, fetched once from
+# Open-Meteo's elevation API (the same keyless upstream the forecast uses)
+# and hardcoded: a town's elevation is a static fact, so looking it up at
+# runtime would buy nothing. Keyed by town_slug; a pipeline test asserts
+# every catalogue town has an entry, so adding a town without its elevation
+# fails loudly.
+TOWN_ELEVATIONS_FT: dict[str, int] = {
+    "colfax": 2421,
+    "donner-summit": 6867,
+    "truckee": 5820,
+    "placerville": 1864,
+    "echo-summit": 7421,
+    "south-lake-tahoe": 6270,
+    "bridgeport": 6473,
+    "lee-vining": 6798,
+    "bishop": 4147,
+    "lone-pine": 3730,
+    "oroville": 167,
+    "quincy": 3428,
+    "jackson": 1224,
+    "kirkwood": 7808,
+    "carson-pass": 8442,
+    "arnold": 4029,
+    "bear-valley": 7067,
+    "ebbetts-pass": 8658,
+    "sonora": 1804,
+    "pinecrest": 5564,
+    "sonora-pass": 9646,
+    "groveland": 2923,
+    "tuolumne-meadows": 8612,
+    "tioga-pass": 9944,
+    "lake-isabella": 2503,
+    "walker-pass": 5449,
+    "ridgecrest": 2300,
+    "grass-valley": 2421,
+    "auburn": 1227,
+    "mariposa": 1926,
+    "tahoe-city": 6250,
+    "markleeville": 5574,
+    "monitor-pass": 8261,
+    "kings-beach": 6270,
+    "stateline": 6319,
+    "incline-village": 6476,
+    "mount-rose-summit": 8894,
+    "el-portal": 2021,
+    "oakhurst": 2283,
+    "wawona": 3996,
+    "grant-grove": 6578,
+    "cedar-grove": 4613,
+    "three-rivers": 951,
+    "giant-forest": 6493,
+    "shaver-lake": 5617,
+    "huntington-lake": 6932,
+    "south-lake": 10049,
+    "mammoth-lakes": 7900,
+    "june-lake": 7848,
+}
+
+
 def build_segments() -> list[dict]:
     """One ingestion waypoint per (route, town), with contract-format ids."""
     return [
