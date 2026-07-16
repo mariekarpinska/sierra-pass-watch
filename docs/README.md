@@ -13,4 +13,4 @@ Alternatives considered / Consequences**.
 | [0003](0003-http-client.md) | HTTP client: Axios over fetch | 2026-07-07 |
 | [0004](0004-backend-framework.md) | Backend framework: FastAPI (Python) | 2026-07-08 |
 | [0005](0005-database.md) | Storage: PostgreSQL | 2026-07-07 |
-| [0006](0006-data-plane.md) | Data plane: Kafka, dbt, Airflow | 2026-07-07 |
+| [0006](0006-data-plane.md) | Data plane: Kafka, dbt | 2026-07-07 |
