@@ -6,6 +6,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as apprunner from 'aws-cdk-lib/aws-apprunner';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 
 export interface SierraSafeStackProps extends cdk.StackProps {
   project: string;
@@ -13,6 +14,11 @@ export interface SierraSafeStackProps extends cdk.StackProps {
   githubRepo: string;
   githubBranch: string;
   backendRepo: ecr.IRepository;
+  // Custom domain, both provided together or both omitted. When set, CloudFront
+  // serves these names with the given certificate; when omitted, CloudFront's
+  // default *.cloudfront.net name is used. See bin/app.ts.
+  domainNames?: string[];
+  certificate?: acm.ICertificate;
 }
 
 // Everything except the registry: the frontend (S3 + CloudFront), the backend
@@ -21,7 +27,7 @@ export interface SierraSafeStackProps extends cdk.StackProps {
 export class SierraSafeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: SierraSafeStackProps) {
     super(scope, id, props);
-    const { project, githubOwner, githubRepo, githubBranch, backendRepo } = props;
+    const { project, githubOwner, githubRepo, githubBranch, backendRepo, domainNames, certificate } = props;
 
     // --- Frontend: private S3 bucket, served over HTTPS by CloudFront ---
     // The bucket is NOT public; only CloudFront can read it, via Origin Access
@@ -40,6 +46,9 @@ export class SierraSafeStack extends cdk.Stack {
       defaultRootObject: 'index.html',
       // Cheapest tier: North America + Europe edges only.
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+      // Serve the custom domain with its certificate when one is configured;
+      // otherwise CloudFront keeps its default *.cloudfront.net name.
+      ...(domainNames && certificate ? { domainNames, certificate } : {}),
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -54,6 +63,13 @@ export class SierraSafeStack extends cdk.Stack {
         { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(10) },
       ],
     });
+
+    // The site's public origin(s): the custom domain when set, else the
+    // CloudFront default name. The browser sends whichever the user typed, and
+    // the backend allows exactly these.
+    const frontendOrigins = domainNames
+      ? domainNames.map((d) => `https://${d}`)
+      : [`https://${distribution.distributionDomainName}`];
 
     // --- The database URL, referenced but not managed here ---
     // It lives in an SSM SecureString created out of band (see the README):
@@ -95,7 +111,7 @@ export class SierraSafeStack extends cdk.Stack {
             // needs the API to allow it explicitly. config.py expects a JSON
             // list, never "*".
             runtimeEnvironmentVariables: [
-              { name: 'CORS_ALLOWED_ORIGINS', value: JSON.stringify([`https://${distribution.distributionDomainName}`]) },
+              { name: 'CORS_ALLOWED_ORIGINS', value: JSON.stringify(frontendOrigins) },
             ],
             // App Runner injects this from SSM at runtime; the value never
             // appears in the template or the image.
@@ -187,8 +203,12 @@ export class SierraSafeStack extends cdk.Stack {
       value: distribution.distributionId,
     });
     new cdk.CfnOutput(this, 'CloudFrontDomain', {
-      description: 'Public URL the frontend is served from.',
+      description: 'The CloudFront name to point the custom domain at (the DNS CNAME target).',
       value: `https://${distribution.distributionDomainName}`,
+    });
+    new cdk.CfnOutput(this, 'SiteUrl', {
+      description: 'Public URL of the site: the custom domain when set, else CloudFront.',
+      value: domainNames ? `https://${domainNames[0]}` : `https://${distribution.distributionDomainName}`,
     });
   }
 }
