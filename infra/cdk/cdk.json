@@ -6,7 +6,7 @@
   },
   "context": {
     "project": "sierra-safe",
-    "githubRepo": "SierraSafetyIndex",
+    "githubRepo": "sierra-pass-watch",
     "githubBranch": "main",
     "githubOwner": "REPLACE_ME",
     "@aws-cdk/core:newStyleStackSynthesis": true,

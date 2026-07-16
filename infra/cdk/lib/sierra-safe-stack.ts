@@ -122,12 +122,21 @@ export class SierraSafeStack extends cdk.Stack {
     });
 
     // --- GitHub Actions -> AWS trust, with NO long-lived keys ---
-    // CDK's provider fetches GitHub's thumbprint automatically (a custom
-    // resource), so unlike raw config there are no fingerprints to hard-code.
-    const githubOidc = new iam.OpenIdConnectProvider(this, 'GithubOidc', {
-      url: 'https://token.actions.githubusercontent.com',
-      clientIds: ['sts.amazonaws.com'],
-    });
+    // The GitHub OIDC provider is ACCOUNT-LEVEL: AWS allows only one per account
+    // for a given URL. Most accounts already have it, so by default we reference
+    // the existing one by its (deterministic) ARN. On a brand-new account that
+    // doesn't have it yet, deploy once with `-c createOidcProvider=true` and CDK
+    // creates it (fetching GitHub's thumbprint automatically).
+    const createOidc =
+      this.node.tryGetContext('createOidcProvider') === true ||
+      this.node.tryGetContext('createOidcProvider') === 'true';
+
+    const oidcProviderArn = createOidc
+      ? new iam.OpenIdConnectProvider(this, 'GithubOidc', {
+          url: 'https://token.actions.githubusercontent.com',
+          clientIds: ['sts.amazonaws.com'],
+        }).openIdConnectProviderArn
+      : `arn:aws:iam::${this.account}:oidc-provider/token.actions.githubusercontent.com`;
 
     // Only an OIDC token from THIS repo on THIS branch may assume the role. A
     // fork, another branch, or another repo produces a subject that fails this
@@ -135,7 +144,7 @@ export class SierraSafeStack extends cdk.Stack {
     const deployRole = new iam.Role(this, 'GithubDeployRole', {
       roleName: `${project}-github-deploy`,
       description: 'Assumed by GitHub Actions (this repo, this branch only) to deploy.',
-      assumedBy: new iam.WebIdentityPrincipal(githubOidc.openIdConnectProviderArn, {
+      assumedBy: new iam.WebIdentityPrincipal(oidcProviderArn, {
         StringEquals: { 'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com' },
         StringLike: {
           'token.actions.githubusercontent.com:sub': `repo:${githubOwner}/${githubRepo}:ref:refs/heads/${githubBranch}`,

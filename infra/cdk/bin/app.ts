@@ -14,7 +14,7 @@ const app = new cdk.App();
 
 const project = app.node.tryGetContext('project') ?? 'sierra-safe';
 const githubOwner = app.node.tryGetContext('githubOwner');
-const githubRepo = app.node.tryGetContext('githubRepo') ?? 'SierraSafetyIndex';
+const githubRepo = app.node.tryGetContext('githubRepo') ?? 'sierra-pass-watch';
 const githubBranch = app.node.tryGetContext('githubBranch') ?? 'main';
 
 // The OIDC trust is scoped to this owner/repo/branch, so a real value is
