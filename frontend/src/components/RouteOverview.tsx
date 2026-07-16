@@ -58,6 +58,8 @@ export function RouteOverview({ journey }: Props) {
         s.waypoint.lat,
         s.waypoint.lon,
       ])
+      // One unbroken line for the whole drive (api/journey-path returns the
+      // drive itself, so it reaches every stop - no gaps to bridge).
       for (const path of paths) {
         L.polyline(path, { color: '#E0A94A', weight: 5, opacity: 0.95, lineCap: 'round' }).addTo(layer)
         L.polyline(path, { color: '#ECE3CE', weight: 5, opacity: 0.28, dashArray: '1 12', lineCap: 'round' }).addTo(layer)
@@ -122,11 +124,6 @@ export function RouteOverview({ journey }: Props) {
         {pathState.phase === 'error' && (
           <p className="route-hint">
             The road line could not be loaded right now; the stops still mark the drive.
-          </p>
-        )}
-        {pathState.phase === 'ok' && pathState.paths.length === 0 && (
-          <p className="route-hint">
-            This drive stays on local roads we have no mapped line for; the stops still mark it.
           </p>
         )}
       </div>

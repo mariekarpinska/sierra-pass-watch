@@ -162,3 +162,28 @@ class TestCommittedFile:
                 for lo, hi in ranges:
                     assert previous_hi < lo <= hi
                     previous_hi = hi
+
+
+class TestCommittedDriveLines:
+    """route-drive-lines.json: the whole-drive polyline the route-overview map
+    draws (built alongside route-journeys.json)."""
+
+    lines = json.loads(
+        (REPO / "shared" / "route-drive-lines.json").read_text(encoding="utf-8")
+    )["lines"]
+    journeys = json.loads(
+        (REPO / "shared" / "route-journeys.json").read_text(encoding="utf-8")
+    )["journeys"]
+
+    def test_every_journey_has_a_drive_line(self) -> None:
+        # One line per journey, same keys - so the map never lacks a line for a
+        # pair the picker offers.
+        assert set(self.lines) == set(self.journeys)
+
+    def test_each_line_is_a_sane_latlon_polyline(self) -> None:
+        # At least two points, each a [lat, lon] inside a generous California
+        # box (catches a lon/lat swap or a stray value).
+        for key, line in self.lines.items():
+            assert len(line) >= 2, key
+            for lat, lon in line:
+                assert 32.0 < lat < 43.0 and -125.0 < lon < -114.0, key

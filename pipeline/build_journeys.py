@@ -27,6 +27,7 @@ from __future__ import annotations
 import itertools
 import json
 import logging
+import math
 import time
 from pathlib import Path
 
@@ -39,6 +40,18 @@ log = logging.getLogger(__name__)
 
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/{coords}"
 OUTPUT_FILE = Path(__file__).parents[1] / "shared" / "route-journeys.json"
+# The drive itself as a drawable [lat, lon] line, one per journey, for the
+# route-overview map. Kept in its own file: it is bulky geometry, unlike the
+# small per-journey summary in route-journeys.json.
+DRIVE_LINES_FILE = Path(__file__).parents[1] / "shared" / "route-drive-lines.json"
+# The whole OSRM drive is thousands of points. Resample to one every ~0.3 mi,
+# then drop the redundant points on straight stretches (Douglas-Peucker below),
+# so the file stays small while the road's shape (curves and all) survives.
+DRIVE_LINE_STEP_MILES = 0.3
+# Douglas-Peucker tolerance in degrees (~220 m) - a point is dropped when it
+# sits closer than this to the line between its kept neighbours. Below a pixel
+# at the overview zoom, so the drawn road looks the same with far fewer points.
+DRIVE_LINE_TOLERANCE_DEG = 0.002
 
 # A town counts as "on the drive" if its centre sits within this far of the
 # route line. Wider than the 700 m crash buffer (polylines.py): town centres sit
@@ -339,9 +352,64 @@ def towns_along(coordinates: list[list[float]], towns: dict[str, dict]) -> list[
     return [slug for _, slug in on_route]
 
 
-def build(output: Path = OUTPUT_FILE) -> dict:
+def _point_line_distance(p: list[float], a: list[float], b: list[float]) -> float:
+    """Distance from point ``p`` to the segment ``a``-``b``, in degrees (a
+    planar approximation, fine over the short spans between kept points)."""
+    (ay, ax), (by, bx), (py, px) = a, b, p
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def simplify_line(points: list[list[float]], tolerance: float) -> list[list[float]]:
+    """Douglas-Peucker: keep the endpoints and every point that bows more than
+    ``tolerance`` from the line between its kept neighbours; drop the rest.
+    Iterative (an explicit stack) so a long line cannot blow the recursion
+    limit."""
+    if len(points) < 3:
+        return points[:]
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        lo, hi = stack.pop()
+        farthest, worst = -1.0, -1
+        for i in range(lo + 1, hi):
+            d = _point_line_distance(points[i], points[lo], points[hi])
+            if d > farthest:
+                farthest, worst = d, i
+        if worst != -1 and farthest > tolerance:
+            keep[worst] = True
+            stack.append((lo, worst))
+            stack.append((worst, hi))
+    return [p for p, k in zip(points, keep) if k]
+
+
+def drive_line(coordinates: list[list[float]]) -> list[list[float]]:
+    """The whole drive as a [lat, lon] polyline for the route-overview map.
+
+    This is the drive itself (OSRM's geometry), not the committed route
+    polylines sliced to it, so the map draws one unbroken line from start to
+    finish - including the miles on side roads and untracked highways that no
+    committed polyline covers. It is resampled to an even ~DRIVE_LINE_STEP_MILES
+    shape, rounded to 4 decimals (~11 m), then Douglas-Peucker simplified to
+    drop the redundant points on straight stretches - small on disk, same shape
+    on screen.
+    """
+    cumulative = cumulative_miles(coordinates)
+    total = cumulative[-1]
+    steps = max(1, round(total / DRIVE_LINE_STEP_MILES))
+    line = [point_at_measure(coordinates, cumulative, total * i / steps) for i in range(steps + 1)]
+    rounded = [[round(lat, 4), round(lon, 4)] for lat, lon in line]
+    return simplify_line(rounded, DRIVE_LINE_TOLERANCE_DEG)
+
+
+def build(output: Path = OUTPUT_FILE, lines_output: Path = DRIVE_LINES_FILE) -> dict:
     towns = unique_towns()
     journeys: dict[str, dict] = {}
+    drive_lines: dict[str, list[list[float]]] = {}
     pairs = list(itertools.combinations(sorted(towns), 2))
     log.info("building %d journeys over %d towns", len(pairs), len(towns))
 
@@ -360,12 +428,13 @@ def build(output: Path = OUTPUT_FILE) -> dict:
         via = travelled_roads(route["coordinates"], ordered, towns)
         driven = driven_bins(route["coordinates"], via)
         if not driven:
-            # Every road on this drive is a spur with no committed polyline, so
-            # the route-overview map can draw no line for it, only the stops.
-            # Rare; flagged at build time so the data case is seen here, not as
-            # a blank map in the browser.
-            log.warning("journey has no drawable road line: %s->%s", slug_a, slug_b)
-        journeys[f"{slug_a}|{slug_b}"] = {
+            # No mile of this drive falls on a tracked highway with a polyline,
+            # so it gets no crash-scoped bins (the crash record is major-routes
+            # only). The map still draws the full drive line below. Rare;
+            # flagged so the data case is seen here, not puzzled over later.
+            log.warning("journey has no crash-scoped miles: %s->%s", slug_a, slug_b)
+        key = f"{slug_a}|{slug_b}"
+        journeys[key] = {
             "towns": ordered,
             "routes": via,
             "anchors": leg_anchor_miles(ordered, via, towns),
@@ -373,6 +442,7 @@ def build(output: Path = OUTPUT_FILE) -> dict:
             "miles": round(route["miles"], 1),
             "minutes": round(route["minutes"]),
         }
+        drive_lines[key] = drive_line(route["coordinates"])
         if done % 50 == 0:
             log.info("... %d/%d", done, len(pairs))
         time.sleep(THROTTLE_SECONDS)
@@ -393,6 +463,20 @@ def build(output: Path = OUTPUT_FILE) -> dict:
     }
     output.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     log.info("wrote %s (%d journeys)", output, len(journeys))
+
+    lines_document = {
+        "description": (
+            "The drive itself as a [lat, lon] polyline for the route-overview "
+            "map, one per town pair (key '{slugA}|{slugB}', slugs sorted), "
+            "resampled from OSRM's driving geometry to ~0.3 mi spacing. This is "
+            "the whole drive - side roads and untracked highways included - so "
+            "the map draws an unbroken line, unlike the crash-scoped route "
+            "polylines. Built alongside route-journeys.json."
+        ),
+        "lines": drive_lines,
+    }
+    lines_output.write_text(json.dumps(lines_document) + "\n", encoding="utf-8")
+    log.info("wrote %s (%d lines)", lines_output, len(drive_lines))
     return document
 
 

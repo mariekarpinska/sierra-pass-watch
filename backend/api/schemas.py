@@ -160,9 +160,9 @@ class CrashPatternsResponse(CamelModel):
 class JourneyPathResponse(CamelModel):
     """GET /api/journey-path?from=&to=
 
-    The drive's road line for the route-overview map: one [lat, lon] path per
-    continuously-driven stretch, the committed route polylines sliced to the
-    journey's driven miles. Purely geometric - no counts, no judgement.
+    The drive's road line for the route-overview map: the whole drive as one
+    [lat, lon] path (wrapped in a list so the shape is a list of paths).
+    Purely geometric - no counts, no judgement.
     """
 
     paths: list[list[tuple[float, float]]]

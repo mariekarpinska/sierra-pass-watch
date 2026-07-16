@@ -1,8 +1,9 @@
 """GET /api/journey-path: the drive's road line for the route-overview map.
 
-The slicing math is tested pure (a fake polyline lookup); the endpoint tests
-run against the real committed index and polylines, since both are static
-build artifacts the app loads at startup - no seams to fake.
+The endpoint returns the whole drive as one committed polyline per town pair
+(shared/route-drive-lines.json). These run against the real committed files,
+since both the index and the drive lines are static build artifacts the app
+loads at startup - no seams to fake.
 """
 from __future__ import annotations
 
@@ -10,46 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from api.paths import driven_paths
 from api.weather import ForecastService, HourlySample, get_forecast_service
 
 DEPARTURE = "2026-01-12T15:00:00Z"
-
-# A straight east-west line at constant latitude, ~10.7 miles long, with a
-# vertex every ~2.7 miles (same shape the journey-builder tests use).
-LINE = [[-120.5, 39.3], [-120.45, 39.3], [-120.4, 39.3], [-120.35, 39.3], [-120.3, 39.3]]
-CUMULATIVE = [0.0, 2.6775, 5.355, 8.0325, 10.71]
-
-
-def fake_lookup(road):
-    return (LINE, CUMULATIVE) if road == "TEST" else None
-
-
-class TestDrivenPaths:
-    def test_a_range_slices_the_line_with_exact_endpoints(self) -> None:
-        paths = driven_paths({"TEST": [(2, 8)]}, lookup=fake_lookup)
-
-        assert len(paths) == 1
-        path = paths[0]
-        # Starts at mile 2 and ends at mile 9 (bins 2..8 cover miles 2 to 9),
-        # interpolated onto the line rather than snapped to a vertex...
-        assert path[0][0] == pytest.approx(39.3)
-        assert path[0][1] == pytest.approx(-120.4626, abs=1e-3)
-        assert path[-1][1] == pytest.approx(-120.3319, abs=1e-3)
-        # ...with the road's own vertices in between (the curves survive).
-        assert (39.3, -120.4) in [(round(lat, 4), round(lon, 4)) for lat, lon in path]
-
-    def test_each_range_is_its_own_path(self) -> None:
-        paths = driven_paths({"TEST": [(0, 2), (7, 9)]}, lookup=fake_lookup)
-        assert len(paths) == 2
-
-    def test_the_end_clamps_to_the_road(self) -> None:
-        # Bin 10 covers miles 10..11 but the road ends at 10.71.
-        paths = driven_paths({"TEST": [(10, 10)]}, lookup=fake_lookup)
-        assert paths[0][-1] == (39.3, -120.3)
-
-    def test_a_spur_with_no_polyline_contributes_nothing(self) -> None:
-        assert driven_paths({"SPUR": [(0, 5)]}, lookup=fake_lookup) == []
 
 
 class _ClearProvider:
@@ -81,15 +45,24 @@ def client():
         yield test_client
 
 
-def test_a_real_journey_returns_its_road_line(client) -> None:
+def test_a_real_journey_returns_the_whole_drive_line(client) -> None:
     response = client.get("/api/journey-path?from=colfax&to=truckee")
 
     assert response.status_code == 200
     paths = response.json()["paths"]
-    assert paths, "the drive covers I-80, so at least one path"
-    lat, lon = paths[0][0]
-    # The line starts near Colfax on I-80.
-    assert 38.5 < lat < 40.0 and -121.5 < lon < -119.5
+    assert len(paths) == 1, "the whole drive is one continuous line"
+    line = paths[0]
+    assert len(line) > 20, "a resampled ~40 mi drive is many points"
+    # The line runs from Colfax to Truckee, in that order.
+    assert 39.0 < line[0][0] < 39.2 and -121.1 < line[0][1] < -120.8
+    assert 39.2 < line[-1][0] < 39.45 and -120.4 < line[-1][1] < -120.0
+
+
+def test_the_reverse_trip_returns_the_same_line_flipped(client) -> None:
+    forward = client.get("/api/journey-path?from=colfax&to=truckee").json()["paths"][0]
+    back = client.get("/api/journey-path?from=truckee&to=colfax").json()["paths"][0]
+
+    assert back == list(reversed(forward))
 
 
 def test_missing_params_and_unknown_towns_mirror_the_journey_endpoint(client) -> None:
