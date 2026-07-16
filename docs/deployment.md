@@ -144,7 +144,7 @@ just a trust handshake. Here's the whole exchange in plain terms:
 
 1. When `deploy.yml` runs, GitHub mints a short-lived **token** for that
    specific run. The token is a signed statement: *"I am run #123 of repo
-   `you/SierraSafetyIndex`, on branch `main`."* GitHub signs it so it can't be
+   `you/sierra-pass-watch`, on branch `main`."* GitHub signs it so it can't be
    forged.
 2. The workflow hands that token to AWS and says "I'd like to be the deploy
    role."
