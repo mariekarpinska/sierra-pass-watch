@@ -158,9 +158,19 @@ cd backend && pytest           # pytest + FastAPI TestClient
 pytest                         # pipeline (add -m integration for Testcontainers)
 ```
 
+## Deploy & scheduled refresh
+
+The app deploys to AWS (S3 + CloudFront for the frontend, App Runner for the
+API) on every push to `main`, using GitHub Actions with OIDC — no AWS keys are
+stored. A separate daily GitHub Actions cron refreshes the data with no machine
+left running. The plain-English "why" is in
+[docs/deployment.md](docs/deployment.md); the exact commands are in
+[infra/cdk/README.md](infra/cdk/README.md).
+
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md) — system overview
+- [docs/deployment.md](docs/deployment.md) — how it goes live and stays fresh (batch vs. streaming, OIDC, where Postgres lives)
 - [docs/weather-regimes.md](docs/weather-regimes.md) — the regime vocabulary and its thresholds
 - [docs/adr/](docs/adr/) — architecture decision records
 - [SECURITY.md](SECURITY.md) — running log of security considerations

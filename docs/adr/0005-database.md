@@ -46,9 +46,8 @@ grow into PostGIS without a storage migration if needed.
 ## Hosting
 
 Planned target is **AWS RDS for PostgreSQL** (small instance, e.g.
-`db.t4g.micro`) per `infra/terraform/aws/` — keeps the whole stack in one
-cloud/IAM boundary and lets the Terraform double as an AWS-skills artifact,
-which matters since this is a portfolio/display project.
+`db.t4g.micro`) via the CDK app in `infra/cdk/` — keeps the whole stack in one
+cloud/IAM boundary.
 
 Cst tradeoff: an always-on RDS instance bills ~$15-30+/mo for `db.t4g.micro` plus
 storage/backups, which is not cheap compared to most of my projects (<$0.01/month). If idle cost becomes a real concern later,

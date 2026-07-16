@@ -19,3 +19,4 @@ Alternatives considered / Consequences**.
 | [0008](0008-near-realtime-alerts.md) | Near real-time alerts: change events on a second stream | Accepted |
 | [0009](0009-journey-routing.md) | Multi-highway journeys: build-time OSRM precompute | Accepted |
 | [0010](0010-crash-history-at-journey-grain.md) | Crash history at journey grain: compose the marts per request | Accepted |
+| [0011](0011-deployment-and-cicd.md) | Deployment & CI/CD: AWS, OIDC, scheduled batch ingestion | Accepted |
