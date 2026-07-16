@@ -1,0 +1,108 @@
+# Scheduled ingestion — the "hands-off refresh".
+#
+# Once a day, GitHub's servers (not your laptop) refresh the recent weather
+# history and rebuild the dbt marts against the cloud Postgres. This is the
+# batch path from ADR-0006: it needs no Kafka and no always-on machine, so it's
+# free to run and nothing has to stay switched on. See docs/deployment.md for
+# why batch-on-a-schedule beats a constantly-running streaming loop here.
+
+name: Scheduled ingestion
+
+on:
+  # 09:17 UTC daily. An odd minute avoids the top-of-hour rush when GitHub
+  # delays scheduled jobs. Adjust the cron to change the cadence.
+  schedule:
+    - cron: "17 9 * * *"
+  # Also runnable by hand from the Actions tab, with optional overrides.
+  workflow_dispatch:
+    inputs:
+      weather_start:
+        description: "Weather backfill start date (YYYY-MM-DD). Blank = rolling 12-day window."
+        required: false
+      weather_end:
+        description: "Weather backfill end date (YYYY-MM-DD). Blank = 5 days ago (archive-safe)."
+        required: false
+      run_crashes:
+        description: "Also refresh crash data (heavy; crashes are annual, so normally off)."
+        type: boolean
+        default: false
+
+# If a run is already going, don't start a second one on top of it.
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      # The one secret this job needs: the full Postgres connection string
+      # (Neon today). The pipeline reads DATABASE_URL directly.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install pipeline + dbt
+        run: |
+          pip install -e ".[dev]"
+          # Pin the major so a future dbt-postgres release can't silently break this.
+          pip install "dbt-postgres>=1.9,<2.0"
+
+      # dbt reads discrete POSTGRES_* vars (warehouse/profiles.yml), so split the
+      # one URL into its parts here. The password is masked so it can't show up
+      # in logs.
+      - name: Derive dbt connection vars from DATABASE_URL
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os, urllib.parse as u
+          p = u.urlparse(os.environ["DATABASE_URL"])
+          pw = u.unquote(p.password or "")
+          print(f"::add-mask::{pw}")
+          print(f"POSTGRES_HOST={p.hostname}")
+          print(f"POSTGRES_PORT={p.port or 5432}")
+          print(f"POSTGRES_USER={u.unquote(p.username or '')}")
+          print(f"POSTGRES_PASSWORD={pw}")
+          print(f"POSTGRES_DB={(p.path or '/').lstrip('/')}")
+          print("POSTGRES_SSLMODE=require")
+          PY
+
+      # Bronze tables are `create table if not exists`, so applying the schema
+      # every run is safe and self-heals a fresh database on the first run.
+      - name: Ensure bronze schema exists
+        run: psql "$DATABASE_URL" -f pipeline/db/schema.sql
+
+      # Pick the weather window: the inputs if given, else a rolling window that
+      # ends 5 days back (Open-Meteo's archive lags real time by a few days).
+      - name: Choose weather window
+        id: window
+        run: |
+          START="${{ inputs.weather_start }}"
+          END="${{ inputs.weather_end }}"
+          [ -z "$END" ]   && END=$(date -u -d '5 days ago'  +%F)
+          [ -z "$START" ] && START=$(date -u -d '12 days ago' +%F)
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "end=$END"     >> "$GITHUB_OUTPUT"
+          echo "Weather window: $START -> $END"
+
+      - name: Ingest recent weather
+        run: python -m pipeline.backfill weather --start "${{ steps.window.outputs.start }}" --end "${{ steps.window.outputs.end }}"
+
+      # Crash data changes yearly, so it's off by default. Turn it on from the
+      # Actions tab when a new year's CCRS extract is published.
+      - name: Refresh crash data (optional)
+        if: ${{ inputs.run_crashes }}
+        run: |
+          python -m pipeline.sources.ccrs
+          python -m pipeline.backfill crashes
+
+      # Rebuild the marts and run dbt's data-quality tests. dbt build fails the
+      # job if a test fails, so a broken upstream feed surfaces here, not in the API.
+      - name: Rebuild + test marts (dbt build)
+        working-directory: warehouse
+        run: dbt build --profiles-dir .

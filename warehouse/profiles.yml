@@ -12,6 +12,10 @@ sierra_safe:
       user: "{{ env_var('POSTGRES_USER', 'app') }}"
       password: "{{ env_var('POSTGRES_PASSWORD', 'app_dev_password') }}"
       dbname: "{{ env_var('POSTGRES_DB', 'app') }}"
+      # Local Docker Postgres has no TLS; hosted Postgres (Neon/RDS) requires it.
+      # 'prefer' uses TLS when the server offers it and plaintext when it doesn't,
+      # so it fits both. The cloud ingest job sets POSTGRES_SSLMODE=require.
+      sslmode: "{{ env_var('POSTGRES_SSLMODE', 'prefer') }}"
       # Marts land in their own schema so bronze (public, pipeline-owned) and
       # analytics (dbt-owned) never write each other's tables.
       schema: analytics
