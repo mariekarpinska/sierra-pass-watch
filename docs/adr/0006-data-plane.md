@@ -1,4 +1,4 @@
-# 0006. Data plane: Kafka, dbt, Airflow — and not Spark
+# 0006. Data plane: Kafka, dbt — and not Spark
 
 2026-07-08
 
@@ -15,9 +15,11 @@ Three orthogonal jobs fall out of that:
 2. **Transform** raw rows into query-shaped marts — *modelling*.
 3. **Run the whole thing on a schedule** and in the right order — *orchestration*.
 
-Kafka, dbt, and Airflow each own exactly one of those. This ADR records why
-those three, why they stay separate, and — the load-bearing decision — why
-**Spark**, which the prior GCP/Streamlit version used, is removed.
+Kafka and dbt own the first two. The third — orchestration — is a plain
+scheduled job, not a dedicated engine (the concrete scheduler is a deployment
+detail; see [ADR-0011](0011-deployment-and-cicd.md)). This ADR records those
+choices, why they stay separate, and — the load-bearing decision — why **Spark**,
+which the prior GCP/Streamlit version used, is removed.
 
 The single most important constraint: **the data volume is tiny.** Full-Sierra
 scope is ~24 routes and a bounded history of California crash records —
@@ -28,14 +30,15 @@ from that.
 
 - **Kafka** — the streaming transport between producer and consumer.
 - **dbt (dbt-postgres)** — the transformation layer that builds the marts.
-- **Airflow** — the orchestrator that schedules and sequences the batch path.
+- **A scheduled job (a plain cron)** — the orchestrator that runs the batch
+  path in order, on a schedule. No dedicated orchestration engine.
 - **Not Spark** — replaced by a plain `confluent-kafka` Python consumer that
   batches into Postgres with `INSERT … ON CONFLICT`.
 
-These are three separate tools on purpose: transport, transformation, and
-orchestration are different concerns with different failure modes, and
-collapsing them into one engine (which is what Spark tempts you to do) is the
-thing this ADR exists to avoid.
+These stay separate on purpose: transport, transformation, and orchestration are
+different concerns with different failure modes, and collapsing them into one
+engine (which is what Spark tempts you to do) is the thing this ADR exists to
+avoid.
 
 ---
 
@@ -94,35 +97,26 @@ that lets those live as version-controlled, tested, documented SQL:
   models, but with no tests, no seeds, no lineage, and no separation between
   staging and marts. dbt is the thin layer that adds all four.
 
-### Why Airflow (orchestration)
+### Orchestration: a scheduled cron, not an engine
 
-**What Airflow is:** a scheduler/orchestrator for pipelines — it runs a defined sequence of steps in order, on a schedule, retries failures, and gives you a UI showing what ran and what didn't.
-
-**Why it's needed:** Something has to run "fetch → load → `dbt build`" in order, on a schedule,
-with retries and a visible history of what ran and what failed. That is
-orchestration, and it is a distinct concern from *how* each step moves or
+**Why it's needed:** Something has to run "fetch → load → `dbt build`" in order,
+on a schedule, so the marts refresh without anyone running scripts by hand. That
+is orchestration, and it is a distinct concern from *how* each step moves or
 shapes data.
 
-- **Explicit DAG.** The ordering (ingest before transform) is declared, not
-  implied by whoever runs the scripts.
-- **Retries, backfill, observability.** First-class in Airflow: a failed
-  task retries; a missed interval can be backfilled; the UI shows the run
-  history — the operational story a data platform is judged on.
-- **It is the local orchestration showcase.** The same three steps also run
-  as a GitHub Actions cron (`ingest.yml`) for hands-off refresh; Airflow is
-  the richer, self-hosted demonstration of the same DAG.
+**What runs it:** a plain scheduled job (a cron) that runs those steps in order
+on a timer, with no always-on server. `dbt build` failing a data test fails the
+run, so a broken upstream feed surfaces immediately. The concrete scheduler is a
+deployment detail — recorded in [ADR-0011](0011-deployment-and-cicd.md).
 
 **Alternatives considered:**
 
-- **A cron job calling a shell script.** Zero infrastructure and, honestly,
-  enough for this cadence. Rejected as the showcase because it has no retry
-  semantics, no backfill, and no run history — but note the CI cron path
-  *is* essentially this, kept deliberately simple. Airflow exists to
-  demonstrate the orchestration concepts, not because the volume demands it.
-- **Prefect / Dagster.** Both are modern, arguably nicer than Airflow
-  (Dagster's asset model maps beautifully onto dbt). Reasonable choices;
-  Airflow chosen for ubiquity and because it's very common. A Dagster variant would be a good future
-  ADR.
+- **A dedicated orchestration engine (e.g. Prefect or Dagster).** These add
+  first-class retries, backfills, and a DAG UI — genuinely valuable when you
+  have many interdependent pipelines and an ops team watching them. At this
+  volume (one daily fetch-and-build) that is more operational weight than the
+  cadence needs, so the cron is used instead. If the pipeline count grows,
+  adopting one becomes a good future ADR.
 - **dbt Cloud's scheduler / `dbt build` in CI alone** would only schedule the transformation step, not the ingestion that has to happen before it — so it doesn't cover the whole pipeline.
 
 ### Why NOT Spark (the load-bearing removal)
@@ -155,14 +149,13 @@ becomes the correct tool. The decision here is scale-specific, not dogmatic.
 - **Two ingestion paths, on purpose.** Kafka producer→consumer is the
   *real-time streaming* demonstration; backfill→Postgres→`dbt build` is the
   *hands-off scheduled batch* path that needs no always-on broker (so CI and
-  cron stay cheap). Airflow's DAG is the local orchestration of the same
-  steps. Knowing *when* to use each is part of the story.
-- **Kafka and Airflow are arguably above the minimum this volume requires.**
-  Accepted deliberately: they are the portfolio's streaming and orchestration
-  showcases, the batch path proves the system also works without them, and
-  both map onto real scale-up paths (MSK, self-hosted Airflow). Removing
-  Spark is where the "no over-engineering" rule bites hardest, because Spark
-  added operational weight with *nothing left for it to do*.
+  cron stay cheap). The scheduled cron runs those same steps in order. Knowing
+  *when* to use each is part of the story.
+- **Kafka is arguably above the minimum this volume requires.** Accepted
+  deliberately: it is the portfolio's streaming showcase, the batch path proves
+  the system also works without it, and it maps onto a real scale-up path (MSK).
+  Removing Spark is where the "no over-engineering" rule bites hardest, because
+  Spark added operational weight with *nothing left for it to do*.
 - **Everything targets Postgres.** One storage engine ([0005](0005-database.md))
   under both paths keeps the mental model small.
 - **The API reads dbt's tables with plain SQL, not an ORM (e.g. SQLAlchemy).**

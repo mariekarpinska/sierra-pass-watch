@@ -1,0 +1,98 @@
+# Continuous deployment to AWS, triggered by a push to main.
+#
+# No AWS keys are stored in GitHub. Each run asks AWS for temporary credentials
+# using OIDC (the token exchange is explained in docs/deployment.md): GitHub
+# proves "I am a run of this repo on main", AWS hands back minutes-long
+# credentials scoped to exactly what a deploy may do, and the run uses those.
+#
+# main is a protected branch, so code only lands here through a reviewed PR —
+# which means only reviewed code can ever deploy.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Lets you redeploy the current main by hand from the Actions tab.
+  workflow_dispatch:
+
+# Requesting the OIDC token requires id-token: write. contents: read is all the
+# checkout needs. Nothing here is granted more than that.
+permissions:
+  id-token: write
+  contents: read
+
+# One deploy at a time; if pushes stack up, let the in-flight one finish.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Exchange the GitHub OIDC token for temporary AWS credentials.
+      - name: Assume AWS deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v3
+
+      # Build the API image from the repo root (the Dockerfile explains why the
+      # context is the whole repo) and tag it two ways: :latest for App Runner
+      # to pull, and :<commit sha> so every image traces back to its commit.
+      - name: Build and push image
+        env:
+          ECR: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          docker build -f backend/Dockerfile -t "$ECR:latest" -t "$ECR:${{ github.sha }}" .
+          docker push "$ECR:latest"
+          docker push "$ECR:${{ github.sha }}"
+
+      # Tell App Runner to roll out the new :latest image.
+      - name: Trigger App Runner deployment
+        run: aws apprunner start-deployment --service-arn "${{ vars.APPRUNNER_SERVICE_ARN }}"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Build the static site. VITE_API_BASE_URL is baked in at build time so the
+      # browser knows the backend's origin (frontend and backend are on different
+      # origins in production — CloudFront vs App Runner).
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assume AWS deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Upload the new files and delete ones that no longer exist, so the bucket
+      # exactly mirrors this build.
+      - name: Sync to S3
+        run: aws s3 sync frontend/dist "s3://${{ vars.FRONTEND_BUCKET }}" --delete
+
+      # CloudFront caches the old files at its edges; invalidate so users get the
+      # new build immediately instead of waiting for the cache to expire.
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"

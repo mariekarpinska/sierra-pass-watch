@@ -33,19 +33,12 @@ warehouse/.user.yml
 # Downloaded data
 data/ccrs/
 
-# Terraform — provider binaries & local state are large/machine-specific.
-# Track config (*.tf) and the lock file; ignore everything else.
-**/.terraform/
-*.tfstate
-*.tfstate.*
-crash.log
-crash.*.log
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-.terraformrc
-terraform.rc
+# AWS CDK — installed packages and the synthesized CloudFormation output.
+# Track the TypeScript source; ignore what npm and `cdk synth` generate.
+infra/cdk/node_modules/
+infra/cdk/cdk.out/
+infra/cdk/*.tsbuildinfo
+cdk.context.json
 
 # IDE / OS
 .vs/
@@ -63,3 +56,5 @@ logs/
 tmp/
 SierraPlan.txt
 SECURITY.md
+temporary screenshots/*
+

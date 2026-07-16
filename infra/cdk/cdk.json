@@ -1,0 +1,15 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/app.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk*.json", "**/*.d.ts", "node_modules"]
+  },
+  "context": {
+    "project": "sierra-safe",
+    "githubRepo": "SierraSafetyIndex",
+    "githubBranch": "main",
+    "githubOwner": "REPLACE_ME",
+    "@aws-cdk/core:newStyleStackSynthesis": true,
+    "@aws-cdk/aws-iam:minimizePolicies": true
+  }
+}
