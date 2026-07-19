@@ -42,7 +42,7 @@ jobs:
 
       - name: Log in to ECR
         id: ecr
-        uses: aws-actions/amazon-ecr-login@v3
+        uses: aws-actions/amazon-ecr-login@v2
 
       # Build the API image from the repo root (the Dockerfile explains why the
       # context is the whole repo) and tag it two ways: :latest for App Runner
