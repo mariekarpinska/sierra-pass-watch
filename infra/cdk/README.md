@@ -1,6 +1,6 @@
 # AWS infrastructure (CDK, TypeScript)
 
-This folder defines the whole Sierra Safe cloud footprint as an **AWS CDK** app:
+This folder defines the whole Sierra Pass Watch cloud footprint as an **AWS CDK** app:
 the GitHub OIDC trust that lets deploys run without stored keys, an ECR registry,
 the App Runner service for the FastAPI backend, and an S3 + CloudFront site for
 the React frontend.
@@ -32,22 +32,22 @@ npx cdk bootstrap
 
 # 1. Store the database URL as an encrypted SSM parameter (out of band, so the
 #    secret never sits in the CDK app or its template).
-aws ssm put-parameter --name "/sierra-safe/database_url" --type SecureString `
+aws ssm put-parameter --name "/sierra-pass-watch/database_url" --type SecureString `
   --value "postgresql://user:pass@host/db?sslmode=require"
 
 # 2. Create the registry FIRST.
-npx cdk deploy SierraSafeRegistry
+npx cdk deploy SierraPassWatchRegistry
 
 # 3. Push one backend image so App Runner has something to start. (Repo root.)
 $REGION  = "us-west-2"
 $ACCOUNT = (aws sts get-caller-identity --query Account --output text)
-$ECR     = "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/sierra-safe-backend"
+$ECR     = "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/sierra-pass-watch-backend"
 aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
 docker build -f backend/Dockerfile -t "${ECR}:latest" .
 docker push "${ECR}:latest"
 
 # 4. Now deploy the rest (App Runner, S3, CloudFront, the OIDC role).
-npx cdk deploy SierraSafe
+npx cdk deploy SierraPassWatch
 ```
 
 If `domainName` is set in `cdk.json`, step 4 also brings up the certificate stack
@@ -82,7 +82,7 @@ named `DATABASE_URL` (the same value you put in SSM above).
 
 The site runs on CloudFront's default `*.cloudfront.net` name unless you set
 `domainName` in `cdk.json` (today: `sierrapasswatch.com`). When set, CDK adds a
-third stack, `SierraSafeCertificate`, holding the TLS certificate. It has to live
+third stack, `SierraPassWatchCertificate`, holding the TLS certificate. It has to live
 in `us-east-1` because that's the only region CloudFront reads certificates from,
 so it's a separate stack the main one references across regions.
 
@@ -94,10 +94,10 @@ terminates HTTPS with the certificate, so Cloudflare should not proxy.
 # 1. Deploy the certificate. It pauses and prints a CNAME (name + value) to
 #    prove you own the domain. Add that CNAME at Cloudflare (grey cloud). ACM
 #    validates within minutes and the deploy finishes on its own.
-npx cdk deploy SierraSafeCertificate
+npx cdk deploy SierraPassWatchCertificate
 
 # 2. Deploy the site. `CloudFrontDomain` in the output is the CNAME target.
-npx cdk deploy SierraSafe
+npx cdk deploy SierraPassWatch
 ```
 
 Then, at Cloudflare, add the final records (DNS only / grey cloud), pointing at

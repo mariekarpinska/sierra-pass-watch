@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 // Entry point. Reads non-secret config from CDK context (cdk.json), then builds
 // two stacks:
-//   1. SierraSafeRegistry — the ECR image registry, on its own so it can be
+//   1. SierraPassWatchRegistry — the ECR image registry, on its own so it can be
 //      created (and an image pushed to it) BEFORE the app that pulls that image.
-//   2. SierraSafe        — everything else: the OIDC deploy role, the App Runner
+//   2. SierraPassWatch        — everything else: the OIDC deploy role, the App Runner
 //      backend, and the S3 + CloudFront frontend.
 // See infra/cdk/README.md for the deploy order and why it's split this way.
 import * as cdk from 'aws-cdk-lib';
 import { RegistryStack } from '../lib/registry-stack';
-import { SierraSafeStack } from '../lib/sierra-safe-stack';
+import { SierraPassWatchStack } from '../lib/sierra-pass-watch-stack';
 import { CertificateStack } from '../lib/certificate-stack';
 
 const app = new cdk.App();
 
-const project = app.node.tryGetContext('project') ?? 'sierra-safe';
+const project = app.node.tryGetContext('project') ?? 'sierra-pass-watch';
 const githubOwner = app.node.tryGetContext('githubOwner');
 const githubRepo = app.node.tryGetContext('githubRepo') ?? 'sierra-pass-watch';
 const githubBranch = app.node.tryGetContext('githubBranch') ?? 'main';
@@ -46,25 +46,25 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION ?? 'us-west-2',
 };
 
-const registry = new RegistryStack(app, 'SierraSafeRegistry', {
+const registry = new RegistryStack(app, 'SierraPassWatchRegistry', {
   project,
   env,
-  description: 'Sierra Safe: the ECR registry. Deploy this first, push one image, then deploy SierraSafe.',
+  description: 'Sierra Pass Watch: the ECR registry. Deploy this first, push one image, then deploy SierraPassWatch.',
 });
 
 // Only build the certificate stack when a custom domain is configured. It's
 // pinned to us-east-1 (the region CloudFront requires) even though the app runs
 // in `env.region`, so the main stack reads it with cross-region references.
 const certificate = domainNames
-  ? new CertificateStack(app, 'SierraSafeCertificate', {
+  ? new CertificateStack(app, 'SierraPassWatchCertificate', {
       domainNames,
       env: { account: env.account, region: 'us-east-1' },
       crossRegionReferences: true,
-      description: 'Sierra Safe: the CloudFront TLS certificate, which must live in us-east-1.',
+      description: 'Sierra Pass Watch: the CloudFront TLS certificate, which must live in us-east-1.',
     }).certificate
   : undefined;
 
-new SierraSafeStack(app, 'SierraSafe', {
+new SierraPassWatchStack(app, 'SierraPassWatch', {
   project,
   githubOwner,
   githubRepo,
@@ -76,5 +76,5 @@ new SierraSafeStack(app, 'SierraSafe', {
   // Needed only to read the us-east-1 certificate from this us-west-2 stack.
   crossRegionReferences: domainNames !== undefined,
   env,
-  description: 'Sierra Safe: OIDC deploy role, App Runner backend, S3 + CloudFront frontend.',
+  description: 'Sierra Pass Watch: OIDC deploy role, App Runner backend, S3 + CloudFront frontend.',
 });
