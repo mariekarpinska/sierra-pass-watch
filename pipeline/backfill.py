@@ -234,7 +234,7 @@ def backfill_crashes(csv_path: Path = ccrs.OUTPUT_CSV, batch_size: int = 1000) -
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    parser = argparse.ArgumentParser(description="Sierra Corridor backfill")
+    parser = argparse.ArgumentParser(description="Sierra Pass Watch backfill")
     sub = parser.add_subparsers(dest="command", required=True)
 
     weather = sub.add_parser("weather", help="hourly weather history → raw_road_events")

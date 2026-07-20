@@ -95,7 +95,7 @@ def poll_once(kafka_producer=None, conn=None, dry_run: bool = False) -> list:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    parser = argparse.ArgumentParser(description="Sierra Corridor alert producer")
+    parser = argparse.ArgumentParser(description="Sierra Pass Watch alert producer")
     parser.add_argument("--dry-run", action="store_true", help="fixtures, no network/Kafka/DB")
     parser.add_argument("--once", action="store_true", help="single cycle then exit")
     args = parser.parse_args()
