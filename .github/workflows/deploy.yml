@@ -49,7 +49,7 @@ jobs:
       # to pull, and :<commit sha> so every image traces back to its commit.
       - name: Build and push image
         env:
-          ECR: ${{ vars.ECR_REPOSITORY }}
+          ECR: ${{ secrets.ECR_REPOSITORY }}
         run: |
           docker build -f backend/Dockerfile -t "$ECR:latest" -t "$ECR:${{ github.sha }}" .
           docker push "$ECR:latest"
@@ -57,7 +57,7 @@ jobs:
 
       # Tell App Runner to roll out the new :latest image.
       - name: Trigger App Runner deployment
-        run: aws apprunner start-deployment --service-arn "${{ vars.APPRUNNER_SERVICE_ARN }}"
+        run: aws apprunner start-deployment --service-arn "${{ secrets.APPRUNNER_SERVICE_ARN }}"
 
   frontend:
     runs-on: ubuntu-latest
@@ -70,13 +70,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Build the static site. VITE_API_BASE_URL is baked in at build time so the
-      # browser knows the backend's origin (frontend and backend are on different
-      # origins in production — CloudFront vs App Runner).
+      # Build the static site. No VITE_API_BASE_URL: the API is served
+      # same-origin through CloudFront's /api/* behavior (the CDK stack), so
+      # the browser calls /api/... on the site's own domain — no CORS, and no
+      # backend URL baked into the bundle.
       - name: Build frontend
         working-directory: frontend
-        env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
         run: |
           npm ci
           npm run build
@@ -90,7 +89,7 @@ jobs:
       # Upload the new files and delete ones that no longer exist, so the bucket
       # exactly mirrors this build.
       - name: Sync to S3
-        run: aws s3 sync frontend/dist "s3://${{ vars.FRONTEND_BUCKET }}" --delete
+        run: aws s3 sync frontend/dist "s3://${{ secrets.FRONTEND_BUCKET }}" --delete
 
       # CloudFront caches the old files at its edges; invalidate so users get the
       # new build immediately instead of waiting for the cache to expire.

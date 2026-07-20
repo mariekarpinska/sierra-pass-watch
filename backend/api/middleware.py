@@ -4,9 +4,13 @@ response, and the server logs.
 The frontend sends X-Correlation-Id on every request (frontend/src/api/client.ts).
 We accept it (or make one if missing), send it back on the response, and add it
 to every log line written while handling the request.
+
+Also here: OriginVerifyMiddleware, the cost guard that pins the API's cheap
+path to the CDN (details on the class).
 """
 from __future__ import annotations
 
+import hmac
 import logging
 import re
 import uuid
@@ -36,6 +40,51 @@ class CorrelationIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.correlation_id = correlation_id.get()
         return True
+
+
+ORIGIN_VERIFY_HEADER = "X-Origin-Verify"
+
+# App Runner's health checker calls this path directly, not through the CDN, so
+# it can never carry the secret. It stays open — it returns a tiny fixed body,
+# so it cannot be abused for data-transfer cost anyway.
+_HEALTH_PATH = "/api/health"
+
+
+class OriginVerifyMiddleware:
+    """ASGI middleware: reject requests that did not come through the CDN.
+
+    CloudFront adds X-Origin-Verify: <secret> to every /api/* request it
+    forwards to this app (infra/cdk/lib/sierra-safe-stack.ts). A request sent
+    straight to the App Runner URL lacks the header and gets a minimal 403 —
+    a ~100-byte response — so hammering the public service URL cannot run up
+    egress costs. This is a COST guard, not authentication: the API is public
+    either way; only the cheap path is pinned to the CDN (which has a
+    flat-rate plan and WAF rate limiting in front of it).
+    """
+
+    def __init__(self, app: ASGIApp, secret: str) -> None:
+        self.app = app
+        self.secret = secret
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] == _HEALTH_PATH:
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope["headers"])
+        sent = headers.get(ORIGIN_VERIFY_HEADER.lower().encode(), b"").decode("latin-1")
+        # Constant-time comparison: a timing oracle would let the secret be
+        # recovered byte by byte, which would reopen the direct path.
+        if not hmac.compare_digest(sent, self.secret):
+            await send({
+                "type": "http.response.start",
+                "status": 403,
+                "headers": [(b"content-type", b"application/json")],
+            })
+            await send({"type": "http.response.body", "body": b'{"error":"Forbidden"}'})
+            return
+
+        await self.app(scope, receive, send)
 
 
 class CorrelationIdMiddleware:

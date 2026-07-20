@@ -25,6 +25,13 @@ const githubBranch = app.node.tryGetContext('githubBranch') ?? 'main';
 const domainName = app.node.tryGetContext('domainName');
 const domainNames = domainName ? [domainName, `www.${domainName}`] : undefined;
 
+// Whether the distribution is enrolled in a CloudFront flat-rate pricing plan
+// (enrollment is console-only, so CDK can't do it — it can only account for
+// it). When true, the stack pins the plan's WAF web ACL (its ARN lives in the
+// SSM parameter /<project>/web_acl_arn, kept out of the repo) and skips the
+// price class, which the plan forbids.
+const flatRatePlan = app.node.tryGetContext('flatRatePlan') === true;
+
 // The OIDC trust is scoped to this owner/repo/branch, so a real value is
 // required. Edit cdk.json, or pass `-c githubOwner=<your-user>` on the CLI.
 if (!githubOwner || githubOwner === 'REPLACE_ME') {
@@ -65,6 +72,7 @@ new SierraSafeStack(app, 'SierraSafe', {
   backendRepo: registry.backendRepo,
   domainNames,
   certificate,
+  flatRatePlan,
   // Needed only to read the us-east-1 certificate from this us-west-2 stack.
   crossRegionReferences: domainNames !== undefined,
   env,

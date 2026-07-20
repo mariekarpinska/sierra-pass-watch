@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # of allowed origins, never "*" (which would allow any site).
     cors_allowed_origins: list[str] = []
 
+    # In production the CDN adds X-Origin-Verify: <this value> to every /api/*
+    # request it forwards (infra/cdk/lib/sierra-safe-stack.ts). When set, the
+    # API rejects requests without it, so the only cheap path to the API is
+    # through the flat-rate CDN — a cost guard, not authentication (see
+    # middleware.py). Unset locally, so direct requests work as always.
+    origin_verify_secret: str | None = None
+
     # Folder the route catalogue file is read from.
     shared_dir: Path = _DEFAULT_SHARED_DIR
 

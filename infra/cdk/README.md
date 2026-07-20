@@ -64,12 +64,16 @@ In the GitHub repo, **Settings → Secrets and variables → Actions**:
 | CDK output                 | GitHub name                  | Kind     |
 | -------------------------- | ---------------------------- | -------- |
 | `GithubDeployRoleArn`      | `AWS_ROLE_ARN`               | Secret   |
-| `EcrRepositoryUri`         | `ECR_REPOSITORY`             | Variable |
-| `AppRunnerServiceArn`      | `APPRUNNER_SERVICE_ARN`      | Variable |
-| `AppRunnerServiceUrl`      | `VITE_API_BASE_URL`          | Variable |
-| `FrontendBucketName`       | `FRONTEND_BUCKET`            | Variable |
+| `EcrRepositoryUri`         | `ECR_REPOSITORY`             | Secret   |
+| `AppRunnerServiceArn`      | `APPRUNNER_SERVICE_ARN`      | Secret   |
+| `FrontendBucketName`       | `FRONTEND_BUCKET`            | Secret   |
 | `CloudFrontDistributionId` | `CLOUDFRONT_DISTRIBUTION_ID` | Variable |
 | (your region, e.g. us-west-2) | `AWS_REGION`              | Variable |
+
+The middle three are secrets not because they grant access (they are only
+identifiers) but because they embed the AWS account id, and secrets are masked
+in the public Actions logs. The last two contain nothing identifying, so they
+stay readable variables.
 
 The scheduled ingestion workflow additionally needs the database URL as a secret
 named `DATABASE_URL` (the same value you put in SSM above).
