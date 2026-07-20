@@ -1,6 +1,6 @@
 # Deployment & scheduled ingestion
 
-This is the plain-English guide to how Sierra Safe goes live and how its data
+This is the plain-English guide to how Sierra Pass Watch goes live and how its data
 stays fresh, with no machine left switched on. The runbook — the exact commands —
 lives in [infra/cdk/README.md](../infra/cdk/README.md); this file is the *why*.
 
@@ -151,7 +151,7 @@ just a trust handshake. Here's the whole exchange in plain terms:
 3. AWS was told once, by the CDK app, to **trust tokens from GitHub** — but only
    if the statement inside matches a rule: the repo must be *yours* and the
    branch must be *main* (see the `sub` condition in
-   [lib/sierra-safe-stack.ts](../infra/cdk/lib/sierra-safe-stack.ts)). AWS checks GitHub's signature,
+   [lib/sierra-pass-watch-stack.ts](../infra/cdk/lib/sierra-pass-watch-stack.ts)). AWS checks GitHub's signature,
    checks the claims against the rule, and if both pass, hands back **temporary
    credentials that expire in minutes.**
 4. The workflow uses those minutes-long credentials to push the image and deploy,
@@ -187,7 +187,7 @@ protection rules** for `main`:
   enforced by GitHub, and the deploy pipeline inherits that guarantee for free.
 
 The deploy role's permissions are also deliberately tiny (see the deploy role in
-`infra/cdk/lib/sierra-safe-stack.ts`): push to *this one* image repo, redeploy
+`infra/cdk/lib/sierra-pass-watch-stack.ts`): push to *this one* image repo, redeploy
 *this one* service, write *this one* bucket,
 clear *this one* CDN. Even in the worst case, a deploy run can't touch anything
 else in the account.
