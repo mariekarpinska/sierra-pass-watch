@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import requests
 
-USER_AGENT = "sierra-safe (https://github.com/mariekarpinska/sierra-safe)"
+USER_AGENT = "sierra-pass-watch (https://github.com/mariekarpinska/sierra-pass-watch)"
 
 DEFAULT_TIMEOUT_S = 15
 

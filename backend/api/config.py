@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     cors_allowed_origins: list[str] = []
 
     # In production the CDN adds X-Origin-Verify: <this value> to every /api/*
-    # request it forwards (infra/cdk/lib/sierra-safe-stack.ts). When set, the
+    # request it forwards (infra/cdk/lib/sierra-pass-watch-stack.ts). When set, the
     # API rejects requests without it, so the only cheap path to the API is
     # through the flat-rate CDN — a cost guard, not authentication (see
     # middleware.py). Unset locally, so direct requests work as always.

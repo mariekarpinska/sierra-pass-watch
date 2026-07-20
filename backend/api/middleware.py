@@ -54,7 +54,7 @@ class OriginVerifyMiddleware:
     """ASGI middleware: reject requests that did not come through the CDN.
 
     CloudFront adds X-Origin-Verify: <secret> to every /api/* request it
-    forwards to this app (infra/cdk/lib/sierra-safe-stack.ts). A request sent
+    forwards to this app (infra/cdk/lib/sierra-pass-watch-stack.ts). A request sent
     straight to the App Runner URL lacks the header and gets a minimal 403 —
     a ~100-byte response — so hammering the public service URL cannot run up
     egress costs. This is a COST guard, not authentication: the API is public
