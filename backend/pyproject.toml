@@ -1,6 +1,6 @@
-# Sierra Safe API - FastAPI service. Package config and dependencies.
+# Sierra Pass Watch API - FastAPI service. Package config and dependencies.
 #
-# The API depends on sierra-corridor-pipeline, which is monorepo-local (NOT on
+# The API depends on sierra-pass-watch-pipeline, which is monorepo-local (NOT on
 # PyPI) - install the repo root first, or pip will try to resolve that name
 # against the public index and fail:
 #   pip install -e .          # from the repo root: the pipeline package
@@ -13,9 +13,9 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sierra-safe-api"
+name = "sierra-pass-watch-api"
 version = "0.1.0"
-description = "HTTP API for the Sierra Safe frontend"
+description = "HTTP API for the Sierra Pass Watch frontend"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -32,7 +32,7 @@ dependencies = [
     # The regime classifier lives in the pipeline package, so ONE
     # implementation labels forecasts, live readings and crash history.
     # Monorepo-local: install the repo root first (`pip install -e ..`).
-    "sierra-corridor-pipeline",
+    "sierra-pass-watch-pipeline",
 ]
 
 [project.optional-dependencies]
