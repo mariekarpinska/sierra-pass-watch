@@ -71,12 +71,16 @@ export class SierraSafeStack extends cdk.Stack {
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
       },
-      // Single-page app: the browser owns the routes, not S3. So when S3 says
-      // "no such key", hand back index.html with a 200 and let React Router
-      // render the right page.
+      // Single-page app: the browser owns the routes, not S3. Under Origin Access
+      // Control the bucket grants CloudFront GetObject only (no ListBucket), so a
+      // missing key returns 403, not 404 — this rule serves index.html for it, so a
+      // deep-link refresh still loads the app.
+      //
+      // Only 403 is remapped. CloudFront error responses are distribution-wide, so
+      // remapping 404 would also swallow the /api/* behavior's real 404s (e.g. an
+      // unknown town) into index.html. Leaving 404 lets API errors through as JSON.
       errorResponses: [
         { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(10) },
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(10) },
       ],
     });
 
@@ -185,9 +189,11 @@ export class SierraSafeStack extends cdk.Stack {
     // --- Route the API through the CDN: /api/* on the site's own origin ---
     // The browser calls /api same-origin (no CORS needed), CloudFront forwards
     // to App Runner with the origin secret attached, and the flat-rate plan's
-    // WAF fronts all of it. Known wrinkle: the SPA errorResponses above are
-    // distribution-wide, so an API 403/404 through the CDN becomes index.html
-    // with a 200 — the API signals errors with 400s, which pass untouched.
+    // WAF fronts all of it. The SPA errorResponses above rewrite only 403 to
+    // index.html, not 404. A request that reaches the API through the CDN always
+    // carries the origin secret, so the API never answers it with a 403 — the
+    // only 403s that rule catches are missing S3 keys. That leaves every API
+    // error, including its 404 for an unknown town, to pass through unchanged.
     distribution.addBehavior('/api/*', new origins.HttpOrigin(backend.attrServiceUrl, {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
       customHeaders: { 'X-Origin-Verify': originVerifySecret },
