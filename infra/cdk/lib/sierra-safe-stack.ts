@@ -6,6 +6,8 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as apprunner from 'aws-cdk-lib/aws-apprunner';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 export interface SierraSafeStackProps extends cdk.StackProps {
   project: string;
@@ -13,6 +15,17 @@ export interface SierraSafeStackProps extends cdk.StackProps {
   githubRepo: string;
   githubBranch: string;
   backendRepo: ecr.IRepository;
+  // Custom domain, both provided together or both omitted. When set, CloudFront
+  // serves these names with the given certificate; when omitted, CloudFront's
+  // default *.cloudfront.net name is used. See bin/app.ts.
+  domainNames?: string[];
+  certificate?: acm.ICertificate;
+  // Whether the distribution is enrolled in a CloudFront flat-rate pricing
+  // plan (console-only enrollment). When true, the plan's WAF web ACL — whose
+  // ARN lives in the SSM parameter /<project>/web_acl_arn, created out of band
+  // so the account id stays out of the repo — is pinned onto the distribution.
+  // It must be, or the next deploy would strip it, and the plan requires it.
+  flatRatePlan?: boolean;
 }
 
 // Everything except the registry: the frontend (S3 + CloudFront), the backend
@@ -21,7 +34,12 @@ export interface SierraSafeStackProps extends cdk.StackProps {
 export class SierraSafeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: SierraSafeStackProps) {
     super(scope, id, props);
-    const { project, githubOwner, githubRepo, githubBranch, backendRepo } = props;
+    const { project, githubOwner, githubRepo, githubBranch, backendRepo, domainNames, certificate, flatRatePlan } = props;
+
+    // The flat-rate plan's WAF web ACL, resolved from SSM at deploy time.
+    const webAclArn = flatRatePlan
+      ? ssm.StringParameter.valueForStringParameter(this, `/${project}/web_acl_arn`)
+      : undefined;
 
     // --- Frontend: private S3 bucket, served over HTTPS by CloudFront ---
     // The bucket is NOT public; only CloudFront can read it, via Origin Access
@@ -38,22 +56,42 @@ export class SierraSafeStack extends cdk.Stack {
 
     const distribution = new cloudfront.Distribution(this, 'FrontendCdn', {
       defaultRootObject: 'index.html',
-      // Cheapest tier: North America + Europe edges only.
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+      // On the flat-rate pricing plan (webAclArn set) CloudFront rejects an
+      // explicit price class — the plan governs delivery. Off-plan, pin the
+      // cheapest tier: North America + Europe edges only.
+      ...(webAclArn ? {} : { priceClass: cloudfront.PriceClass.PRICE_CLASS_100 }),
+      // Serve the custom domain with its certificate when one is configured;
+      // otherwise CloudFront keeps its default *.cloudfront.net name.
+      ...(domainNames && certificate ? { domainNames, certificate } : {}),
+      // Keep the flat-rate plan's WAF attached (see SierraSafeStackProps).
+      ...(webAclArn ? { webAclId: webAclArn } : {}),
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
       },
-      // Single-page app: the browser owns the routes, not S3. So when S3 says
-      // "no such key", hand back index.html with a 200 and let React Router
-      // render the right page.
+      // Single-page app: the browser owns the routes, not S3. Under Origin Access
+      // Control the bucket grants CloudFront GetObject only (no ListBucket), so a
+      // missing key returns 403, not 404 — this rule serves index.html for it, so a
+      // deep-link refresh still loads the app.
+      //
+      // Only 403 is remapped. CloudFront error responses are distribution-wide, so
+      // remapping 404 would also swallow the /api/* behavior's real 404s (e.g. an
+      // unknown town) into index.html. Leaving 404 lets API errors through as JSON.
       errorResponses: [
         { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(10) },
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(10) },
       ],
     });
+
+    // CORS is now only a transition aid: the browser reaches the API
+    // same-origin through the /api/* behavior below, which needs no CORS at
+    // all. The custom domains stay allowed so a frontend built before the
+    // same-origin switch keeps working; without a custom domain the list is
+    // empty and the backend adds no CORS middleware. (Deliberately NOT the
+    // distribution's domain here — the distribution now references the
+    // backend for the /api origin, so the reverse reference would be a cycle.)
+    const frontendOrigins = domainNames ? domainNames.map((d) => `https://${d}`) : [];
 
     // --- The database URL, referenced but not managed here ---
     // It lives in an SSM SecureString created out of band (see the README):
@@ -61,6 +99,19 @@ export class SierraSafeStack extends cdk.Stack {
     // shouldn't sit in the template anyway. We only reference it by ARN.
     const dbUrlParamName = `/${project}/database_url`;
     const dbUrlParamArn = `arn:aws:ssm:${this.region}:${this.account}:parameter${dbUrlParamName}`;
+
+    // --- The CDN origin secret, also created out of band ---
+    // A random string in a plain SSM parameter (`aws ssm put-parameter --name
+    // /<project>/origin_verify --type String --value "$(openssl rand -hex 32)"`).
+    // CloudFront sends it to the backend on every /api/* request, and the
+    // backend rejects requests without it (backend/api/middleware.py) — so a
+    // flood aimed at the public App Runner URL gets ~100-byte 403s instead of
+    // full JSON, and can't run up egress costs. A cost guard, not auth, so a
+    // plain (non-secure) parameter is fine — and CloudFront custom headers
+    // can't resolve SecureStrings anyway.
+    const originVerifySecret = ssm.StringParameter.valueForStringParameter(
+      this, `/${project}/origin_verify`,
+    );
 
     // --- Backend: FastAPI container on App Runner ---
     // App Runner's L2 construct is still an alpha module, so this uses the
@@ -81,8 +132,20 @@ export class SierraSafeStack extends cdk.Stack {
       resources: [dbUrlParamArn],
     }));
 
+    // Cost ceiling: App Runner's default autoscaling allows up to 25 instances,
+    // which a request flood would happily reach and bill for. 3 instances at
+    // 100 concurrent requests each is far more than this site needs, and caps
+    // the worst-case compute spend at ~$10/week instead of ~$82/week.
+    const autoScaling = new apprunner.CfnAutoScalingConfiguration(this, 'BackendAutoScaling', {
+      autoScalingConfigurationName: `${project}-backend`,
+      minSize: 1,
+      maxSize: 3,
+      maxConcurrency: 100,
+    });
+
     const backend = new apprunner.CfnService(this, 'Backend', {
       serviceName: `${project}-backend`,
+      autoScalingConfigurationArn: autoScaling.attrAutoScalingConfigurationArn,
       sourceConfiguration: {
         autoDeploymentsEnabled: false,
         authenticationConfiguration: { accessRoleArn: ecrAccessRole.roleArn },
@@ -95,7 +158,9 @@ export class SierraSafeStack extends cdk.Stack {
             // needs the API to allow it explicitly. config.py expects a JSON
             // list, never "*".
             runtimeEnvironmentVariables: [
-              { name: 'CORS_ALLOWED_ORIGINS', value: JSON.stringify([`https://${distribution.distributionDomainName}`]) },
+              { name: 'CORS_ALLOWED_ORIGINS', value: JSON.stringify(frontendOrigins) },
+              // The cost guard's shared secret (see originVerifySecret above).
+              { name: 'ORIGIN_VERIFY_SECRET', value: originVerifySecret },
             ],
             // App Runner injects this from SSM at runtime; the value never
             // appears in the template or the image.
@@ -119,6 +184,27 @@ export class SierraSafeStack extends cdk.Stack {
         healthyThreshold: 1,
         unhealthyThreshold: 5,
       },
+    });
+
+    // --- Route the API through the CDN: /api/* on the site's own origin ---
+    // The browser calls /api same-origin (no CORS needed), CloudFront forwards
+    // to App Runner with the origin secret attached, and the flat-rate plan's
+    // WAF fronts all of it. The SPA errorResponses above rewrite only 403 to
+    // index.html, not 404. A request that reaches the API through the CDN always
+    // carries the origin secret, so the API never answers it with a 403 — the
+    // only 403s that rule catches are missing S3 keys. That leaves every API
+    // error, including its 404 for an unknown town, to pass through unchanged.
+    distribution.addBehavior('/api/*', new origins.HttpOrigin(backend.attrServiceUrl, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+      customHeaders: { 'X-Origin-Verify': originVerifySecret },
+    }), {
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      // Live data on every request: never cache, and forward query strings —
+      // but not the viewer's Host header, because App Runner routes on Host
+      // and must see its own domain, not sierrapasswatch.com.
+      cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
     });
 
     // --- GitHub Actions -> AWS trust, with NO long-lived keys ---
@@ -187,8 +273,12 @@ export class SierraSafeStack extends cdk.Stack {
       value: distribution.distributionId,
     });
     new cdk.CfnOutput(this, 'CloudFrontDomain', {
-      description: 'Public URL the frontend is served from.',
+      description: 'The CloudFront name to point the custom domain at (the DNS CNAME target).',
       value: `https://${distribution.distributionDomainName}`,
+    });
+    new cdk.CfnOutput(this, 'SiteUrl', {
+      description: 'Public URL of the site: the custom domain when set, else CloudFront.',
+      value: domainNames ? `https://${domainNames[0]}` : `https://${distribution.distributionDomainName}`,
     });
   }
 }

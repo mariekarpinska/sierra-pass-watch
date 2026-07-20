@@ -3,6 +3,12 @@
 A monorepo with a **React + TypeScript** frontend (Vite) and a **FastAPI**
 backend (Python), wired together through an explicit, documented HTTP layer.
 
+**Live site:** [sierrapasswatch.com](https://sierrapasswatch.com)
+
+![The full Sierra Pass Watch page for a Colfax to South Lake Tahoe drive: a hero, the route planner, the forecast along the route, the drive traced on a map, and the crash history for each stretch.](docs/images/site-full-page.png)
+
+*The full site for a Colfax → South Lake Tahoe drive: the planner, the forecast along the route, the route on a map, and the crash history for each stretch.*
+
 ## Layout
 
 ```

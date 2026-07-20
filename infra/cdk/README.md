@@ -50,6 +50,9 @@ docker push "${ECR}:latest"
 npx cdk deploy SierraSafe
 ```
 
+If `domainName` is set in `cdk.json`, step 4 also brings up the certificate stack
+and pauses for a DNS record. See "Custom domain" below before running it.
+
 After step 4, the stack outputs (printed by `cdk deploy`, or `aws cloudformation
 describe-stacks`) are what GitHub needs. From then on, deploys are automatic on
 push to `main` — you never run these build/push commands by hand again.
@@ -61,15 +64,52 @@ In the GitHub repo, **Settings → Secrets and variables → Actions**:
 | CDK output                 | GitHub name                  | Kind     |
 | -------------------------- | ---------------------------- | -------- |
 | `GithubDeployRoleArn`      | `AWS_ROLE_ARN`               | Secret   |
-| `EcrRepositoryUri`         | `ECR_REPOSITORY`             | Variable |
-| `AppRunnerServiceArn`      | `APPRUNNER_SERVICE_ARN`      | Variable |
-| `AppRunnerServiceUrl`      | `VITE_API_BASE_URL`          | Variable |
-| `FrontendBucketName`       | `FRONTEND_BUCKET`            | Variable |
+| `EcrRepositoryUri`         | `ECR_REPOSITORY`             | Secret   |
+| `AppRunnerServiceArn`      | `APPRUNNER_SERVICE_ARN`      | Secret   |
+| `FrontendBucketName`       | `FRONTEND_BUCKET`            | Secret   |
 | `CloudFrontDistributionId` | `CLOUDFRONT_DISTRIBUTION_ID` | Variable |
 | (your region, e.g. us-west-2) | `AWS_REGION`              | Variable |
 
+The middle three are secrets not because they grant access (they are only
+identifiers) but because they embed the AWS account id, and secrets are masked
+in the public Actions logs. The last two contain nothing identifying, so they
+stay readable variables.
+
 The scheduled ingestion workflow additionally needs the database URL as a secret
 named `DATABASE_URL` (the same value you put in SSM above).
+
+## Custom domain (optional)
+
+The site runs on CloudFront's default `*.cloudfront.net` name unless you set
+`domainName` in `cdk.json` (today: `sierrapasswatch.com`). When set, CDK adds a
+third stack, `SierraSafeCertificate`, holding the TLS certificate. It has to live
+in `us-east-1` because that's the only region CloudFront reads certificates from,
+so it's a separate stack the main one references across regions.
+
+The domain's DNS is at **Cloudflare**, not Route 53, so you add two rounds of DNS
+records there by hand. Keep every record **DNS only (grey cloud)** — CloudFront
+terminates HTTPS with the certificate, so Cloudflare should not proxy.
+
+```powershell
+# 1. Deploy the certificate. It pauses and prints a CNAME (name + value) to
+#    prove you own the domain. Add that CNAME at Cloudflare (grey cloud). ACM
+#    validates within minutes and the deploy finishes on its own.
+npx cdk deploy SierraSafeCertificate
+
+# 2. Deploy the site. `CloudFrontDomain` in the output is the CNAME target.
+npx cdk deploy SierraSafe
+```
+
+Then, at Cloudflare, add the final records (DNS only / grey cloud), pointing at
+the `CloudFrontDomain` value from step 2, e.g. `d123abc.cloudfront.net`:
+
+| Type  | Name  | Target                  |
+| ----- | ----- | ----------------------- |
+| CNAME | `@`   | `d123abc.cloudfront.net` |
+| CNAME | `www` | `d123abc.cloudfront.net` |
+
+Cloudflare flattens the `@` (apex) CNAME automatically, so the bare domain and
+`www` both resolve to CloudFront.
 
 ## Moving the database to RDS later
 

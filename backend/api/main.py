@@ -33,7 +33,11 @@ from api.crashes import (
     segment_legs,
 )
 from api.journeys import JourneyIndex, ResolvedJourney, get_journey_index
-from api.middleware import CorrelationIdFilter, CorrelationIdMiddleware
+from api.middleware import (
+    CorrelationIdFilter,
+    CorrelationIdMiddleware,
+    OriginVerifyMiddleware,
+)
 from api.paths import DriveLines, get_drive_lines
 from api.schemas import (
     CrashPatternsResponse,
@@ -123,6 +127,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.crash_store.close()
 
     app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
+
+    # Cost guard: when configured, only requests carrying the CDN's secret
+    # header get through (middleware.py). Added first so CorrelationIdMiddleware
+    # (added after, therefore outermost) still stamps rejected requests.
+    if settings.origin_verify_secret:
+        app.add_middleware(OriginVerifyMiddleware, secret=settings.origin_verify_secret)
 
     # Every request flows through this to get a correlation id.
     app.add_middleware(CorrelationIdMiddleware)
