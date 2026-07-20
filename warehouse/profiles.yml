@@ -2,7 +2,7 @@
 # variables docker-compose and the pipeline use, so nothing secret lives here
 # and the same models target local Postgres or cloud Postgres by swapping the
 # environment, not the file.
-sierra_safe:
+sierra_pass_watch:
   target: dev
   outputs:
     dev:

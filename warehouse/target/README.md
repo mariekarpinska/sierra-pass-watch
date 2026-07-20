@@ -30,8 +30,8 @@ Two-step mental model:
 
 | Path | What it is | Why you'd look at it |
 |------|-----------|----------------------|
-| `compiled/sierra_corridor/…` | Your models with all Jinja resolved to **plain SQL** — no `create`, just the `SELECT` | Debugging: "what SQL did my macro actually produce?" Paste it into a client and run it as-is. |
-| `run/sierra_corridor/…` | The compiled SQL **wrapped in the DDL** dbt executes (`create table … as select …`) | The exact statement dbt ran against Postgres. |
+| `compiled/sierra_pass_watch/…` | Your models with all Jinja resolved to **plain SQL** — no `create`, just the `SELECT` | Debugging: "what SQL did my macro actually produce?" Paste it into a client and run it as-is. |
+| `run/sierra_pass_watch/…` | The compiled SQL **wrapped in the DDL** dbt executes (`create table … as select …`) | The exact statement dbt ran against Postgres. |
 | `manifest.json` | The **full project graph** — every model, test, source, its columns, docs, and dependencies | The heart of dbt tooling: powers `dbt docs`, lineage, and state-based `--select state:modified` runs in CI. |
 | `run_results.json` | **Results of the last invocation** — pass/fail, row counts, and timing per node | CI reads this to report what passed; you read it to find the slow model. |
 | `graph.gpickle` | The dependency **DAG**, serialized (Python pickle) for dbt's internal use | You won't open it by hand; it's how dbt knows build order. |
@@ -40,7 +40,7 @@ Two-step mental model:
 | `partial_parse.msgpack` | A **cache** of the parsed project so the next run starts faster | Pure speed optimization. Delete it and dbt just re-parses. |
 
 `compiled/` and `run/` mirror your `models/` folder structure under a folder
-named after the dbt project (`sierra_corridor`).
+named after the dbt project (`sierra_pass_watch`).
 
 ## Why it's gitignored
 
