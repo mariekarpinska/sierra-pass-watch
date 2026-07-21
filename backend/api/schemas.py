@@ -157,6 +157,37 @@ class CrashPatternsResponse(CamelModel):
     top_causes: list[CauseStat]
 
 
+class Incident(CamelModel):
+    """One live CHP collision on the drive's roads (ADR-0012). PROVISIONAL: CHP
+    is unofficial and thin, so this is a fresh-but-unverified companion to the
+    authoritative crash history, never a substitute. `regime` is the weather the
+    collision was collected in; the point is the collision's own lat/lon."""
+
+    route_id: str
+    mile_bin: int
+    regime: str
+    # ISO time the collision happened (UTC).
+    event_time: str
+    lat: float
+    lon: float
+
+
+class IncidentsResponse(CamelModel):
+    """GET /api/incidents?from=&to=
+
+    Live collisions collected on the journey's roads, newest first. Deliberately
+    labelled `provisional` so the UI can never present it as the authoritative
+    record: it is thin (collisions on these mountain roads are rare) and
+    unverified. Empty is the normal case, and the UI says so plainly.
+    """
+
+    route_ids: list[str]
+    # Always true; a constant on the wire so the client cannot forget to label it.
+    provisional: bool
+    count: int
+    incidents: list[Incident]
+
+
 class JourneyPathResponse(CamelModel):
     """GET /api/journey-path?from=&to=
 

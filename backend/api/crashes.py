@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
 from fastapi import Request
@@ -43,11 +43,20 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from api.config import Settings
-from api.schemas import CauseStat, CrashBin, CrashPatternsResponse
+from api.schemas import (
+    CauseStat,
+    CrashBin,
+    CrashPatternsResponse,
+    Incident,
+    IncidentsResponse,
+)
 
 # The UI shows at most this many cause bars; the mart taxonomy has ~18 causes,
 # so a cap keeps the panel readable rather than exhaustive.
 TOP_CAUSES = 4
+
+# The provisional-incidents panel shows at most this many recent collisions.
+RECENT_INCIDENTS_LIMIT = 50
 
 # Below this many matched crashes the record is context, not a pattern; the UI
 # must say so. Same threshold the marts use for their per-bin small_sample flag.
@@ -151,12 +160,26 @@ class CauseRow:
     crash_count: int
 
 
+@dataclass(frozen=True)
+class IncidentRow:
+    """One live CHP collision on a tracked route (mart_incident_conditions)."""
+
+    route_id: str
+    mile_bin: int
+    regime: str
+    event_time: datetime
+    lat: float
+    lon: float
+
+
 class CrashHistoryStore(Protocol):
     """The database seam. Tests inject a fake; production uses Postgres."""
 
     def bins(self, legs: list[Leg]) -> list[BinRow]: ...
 
     def causes(self, legs: list[Leg]) -> list[CauseRow]: ...
+
+    def recent_incidents(self, route_ids: list[str]) -> list[IncidentRow]: ...
 
 
 # Both queries scope each road stretch to its own regime with the same join:
@@ -223,6 +246,25 @@ _CAUSES_SQL = sql.SQL("""
 """)
 
 
+# Recent live collisions on the journey's roads, newest first. Scoped to the
+# whole route (not the driven stretches): the provisional panel is a plain "what
+# has been reported live on these roads lately", not the forecast-matched history
+# the crash-patterns endpoint composes. All values parameterized.
+_INCIDENTS_SQL = sql.SQL("""
+    select
+        route_id,
+        mile_bin,
+        weather_regime as regime,
+        event_time,
+        lat,
+        lon
+    from {schema}.mart_incident_conditions
+    where route_id = any(%(route_ids)s)
+    order by event_time desc
+    limit %(limit)s
+""")
+
+
 def _leg_params(legs: list[Leg]) -> dict:
     """The four parallel arrays the legs join binds."""
     return {
@@ -279,6 +321,12 @@ class PostgresCrashHistoryStore:
         )
         return [CauseRow(**row) for row in rows]
 
+    def recent_incidents(self, route_ids: list[str]) -> list[IncidentRow]:
+        rows = self._fetch_all(
+            _INCIDENTS_SQL, {"route_ids": route_ids, "limit": RECENT_INCIDENTS_LIMIT}
+        )
+        return [IncidentRow(**row) for row in rows]
+
 
 def build_crash_patterns(
     route_ids: list[str],
@@ -328,6 +376,27 @@ def build_crash_patterns(
                 pct=round(100.0 * row.crash_count / crash_count),
             )
             for row in causes
+        ],
+    )
+
+
+def build_incidents(route_ids: list[str], rows: list[IncidentRow]) -> IncidentsResponse:
+    """Assemble the provisional-incidents response. Pure. `provisional` is always
+    true, a constant on the wire so the UI can never drop the label."""
+    return IncidentsResponse(
+        route_ids=route_ids,
+        provisional=True,
+        count=len(rows),
+        incidents=[
+            Incident(
+                route_id=row.route_id,
+                mile_bin=row.mile_bin,
+                regime=row.regime,
+                event_time=row.event_time.isoformat(),
+                lat=row.lat,
+                lon=row.lon,
+            )
+            for row in rows
         ],
     )
 
