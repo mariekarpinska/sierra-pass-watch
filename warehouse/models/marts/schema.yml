@@ -64,6 +64,31 @@ models:
       - name: route_id
         tests: [not_null]
 
+  - name: mart_incident_conditions
+    description: >
+      One row per live CHP collision, deduped, with the weather it was collected
+      in (ADR-0012). PROVISIONAL and separate from the authoritative CCRS marts.
+      One-row-per-collision uniqueness is checked by a singular test
+      (tests/assert_incident_conditions_unique_grain.sql).
+    columns:
+      - name: incident_id
+        tests: [not_null, unique]
+      - name: route_id
+        tests: [not_null]
+      - name: mile_bin
+        tests: [not_null]
+      - name: weather_regime
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ var('regimes') }}"
+      - name: data_grade
+        tests:
+          - accepted_values:
+              arguments:
+                values: [provisional]
+
   - name: mart_active_alerts
     description: >
       Near-real-time alert feed (view, not table, so it stays live between dbt
