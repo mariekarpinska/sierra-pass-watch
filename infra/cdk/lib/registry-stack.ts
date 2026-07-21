@@ -8,7 +8,7 @@ export interface RegistryStackProps extends cdk.StackProps {
 
 // The private container registry for the backend image, in its own stack.
 //
-// Why separate: App Runner (in the SierraSafe stack) can't be created until an
+// Why separate: App Runner (in the SierraPassWatch stack) can't be created until an
 // image already exists at :latest. Keeping the registry apart lets you deploy
 // it, push one image, then deploy the app — instead of the app failing on a
 // registry that has nothing in it yet.

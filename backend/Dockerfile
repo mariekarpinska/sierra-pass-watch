@@ -4,7 +4,7 @@
 # because the API imports the monorepo-local `pipeline` package and reads data
 # files from shared/. The deploy workflow runs:
 #
-#   docker build -f backend/Dockerfile -t sierra-safe-api .
+#   docker build -f backend/Dockerfile -t sierra-pass-watch-api .
 #
 # slim = the small Debian-based Python image: everything we need, none of the
 # build tools we don't (psycopg and confluent-kafka ship prebuilt Linux wheels,
@@ -29,7 +29,7 @@ COPY pyproject.toml ./
 COPY pipeline/ ./pipeline/
 RUN pip install .
 
-# 2) The API package. Its pyproject depends on sierra-corridor-pipeline, which
+# 2) The API package. Its pyproject depends on sierra-pass-watch-pipeline, which
 #    step 1 already installed, so pip won't reach out to PyPI looking for it.
 COPY backend/ ./backend/
 RUN pip install ./backend

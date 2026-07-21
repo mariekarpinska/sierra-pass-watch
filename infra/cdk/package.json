@@ -1,8 +1,8 @@
 {
-  "name": "sierra-safe-infra",
+  "name": "sierra-pass-watch-infra",
   "version": "0.1.0",
   "private": true,
-  "description": "AWS CDK app: the whole Sierra Safe cloud footprint, in TypeScript.",
+  "description": "AWS CDK app: the whole Sierra Pass Watch cloud footprint, in TypeScript.",
   "scripts": {
     "synth": "cdk synth",
     "diff": "cdk diff",

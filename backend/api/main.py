@@ -1,4 +1,4 @@
-"""Sierra Safe API: builds the FastAPI app.
+"""Sierra Pass Watch API: builds the FastAPI app.
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
 field, and only what the UI consumes exists: /api/health, /api/towns,
@@ -126,7 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.open_meteo_client.aclose()
             app.state.crash_store.close()
 
-    app = FastAPI(title="Sierra Safe API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Sierra Pass Watch API", version="0.1.0", lifespan=lifespan)
 
     # Cost guard: when configured, only requests carrying the CDN's secret
     # header get through (middleware.py). Added first so CorrelationIdMiddleware

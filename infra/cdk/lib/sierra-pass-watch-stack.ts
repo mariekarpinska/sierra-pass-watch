@@ -9,7 +9,7 @@ import * as apprunner from 'aws-cdk-lib/aws-apprunner';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
-export interface SierraSafeStackProps extends cdk.StackProps {
+export interface SierraPassWatchStackProps extends cdk.StackProps {
   project: string;
   githubOwner: string;
   githubRepo: string;
@@ -31,8 +31,8 @@ export interface SierraSafeStackProps extends cdk.StackProps {
 // Everything except the registry: the frontend (S3 + CloudFront), the backend
 // (App Runner), and the GitHub OIDC deploy role. Plain-English background —
 // why AWS, why App Runner, how OIDC works — is in docs/deployment.md.
-export class SierraSafeStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: SierraSafeStackProps) {
+export class SierraPassWatchStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: SierraPassWatchStackProps) {
     super(scope, id, props);
     const { project, githubOwner, githubRepo, githubBranch, backendRepo, domainNames, certificate, flatRatePlan } = props;
 
@@ -63,7 +63,7 @@ export class SierraSafeStack extends cdk.Stack {
       // Serve the custom domain with its certificate when one is configured;
       // otherwise CloudFront keeps its default *.cloudfront.net name.
       ...(domainNames && certificate ? { domainNames, certificate } : {}),
-      // Keep the flat-rate plan's WAF attached (see SierraSafeStackProps).
+      // Keep the flat-rate plan's WAF attached (see SierraPassWatchStackProps).
       ...(webAclArn ? { webAclId: webAclArn } : {}),
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),

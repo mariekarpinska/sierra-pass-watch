@@ -37,7 +37,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
       # The API imports the pipeline's regime classifier, so install the
-      # monorepo root first for `sierra-corridor-pipeline` to resolve locally.
+      # monorepo root first for `sierra-pass-watch-pipeline` to resolve locally.
       - run: pip install -e ..
       - run: pip install -e ".[dev]"
       - run: pytest
