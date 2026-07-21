@@ -15,6 +15,7 @@ flowchart LR
     RRE[(raw_road_events)]
     CR[(crashes)]
     AL[(alerts)]
+    IN[(incidents)]
   end
   subgraph seeds [seeds - copies of pipeline data]
     SEG[segments.csv]
@@ -24,18 +25,21 @@ flowchart LR
     SRE[stg_road_events]
     SCR[stg_crashes]
     SAL[stg_alerts]
+    SIN[stg_incidents]
   end
   subgraph marts [marts - tables, except the alerts view]
     MCC[mart_crash_conditions]
     MCP[mart_crash_patterns]
     MPC[mart_pattern_causes]
     MRC[mart_route_crashes]
+    MIC[mart_incident_conditions]
     MAA[[mart_active_alerts view]]
   end
 
   RRE --> SRE --> MCC
   CR --> SCR --> MCC
   AL --> SAL --> MAA
+  IN --> SIN --> MIC
   SEG --> MCC
   MCC --> MCP
   MCC --> MPC
@@ -50,6 +54,7 @@ flowchart LR
 | `mart_crash_patterns` | route x mile bin x regime | how many crashes, how many fatal, over what dates | table |
 | `mart_pattern_causes` | route x mile bin x regime x rank | the top three recorded causes | table |
 | `mart_route_crashes` | one row per crash | the crash points the map plots | table |
+| `mart_incident_conditions` | one row per live collision | live CHP collisions with the weather they were collected in (**provisional**, ADR-0012) | table |
 | `mart_active_alerts` | one row per recent alert | the near-real-time chain-control / incident feed | **view** |
 
 `GET /api/crash-patterns` reads three of these per request: bins from
@@ -60,6 +65,14 @@ composes at request time instead of a journey-grain mart is
 is consumed by the alerts branch. (An earlier `mart_hotspots` — route-relative
 crash concentration — was removed once the map's density marks covered the
 product need; nothing served it.)
+
+`mart_incident_conditions` is the **provisional** companion to the CCRS marts
+(ADR-0012): live CHP collisions the poll worker collected, each paired with the
+weather at its point, deduped to one row per collision. It is deliberately kept
+apart from the authoritative history: CHP is unofficial and thin (no severity,
+injury, or cause), so it never feeds `mart_crash_patterns`. `GET /api/incidents`
+serves it, always labelled provisional so the UI can never present it as the
+verified record.
 
 ## Two spatial grains, on purpose (ADR-0007)
 
