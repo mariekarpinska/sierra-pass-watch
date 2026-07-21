@@ -93,6 +93,13 @@ jobs:
       - name: Ingest recent weather
         run: python -m pipeline.backfill weather --start "${{ steps.window.outputs.start }}" --end "${{ steps.window.outputs.end }}"
 
+      # Fill the weather on any live collision whose on-collision fetch failed
+      # (ADR-0012). The poll worker collects collisions continuously between
+      # runs; this tops up the few that are missing weather, so the mart below
+      # folds in genuinely new, fully-labelled rows day over day.
+      - name: Fill missing collision weather
+        run: python -m pipeline.backfill incidents
+
       # Crash data changes yearly, so it's off by default. Turn it on from the
       # Actions tab when a new year's CCRS extract is published.
       - name: Refresh crash data (optional)
