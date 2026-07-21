@@ -23,5 +23,5 @@ select
     wind_gust_mph,
     surface_temp_c,
     seismic_mag,
-    source               -- 'live' (Kafka consumer) or 'backfill'
+    source               -- 'backfill' (weather history from the Open-Meteo archive)
 from {{ source('bronze', 'raw_road_events') }}
