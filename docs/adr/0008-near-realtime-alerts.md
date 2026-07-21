@@ -2,6 +2,14 @@
 
 **Status:** 2026-07-09
 
+> **Superseded in part by [ADR-0012](0012-direct-poll-ingestion.md) (2026-07-21):**
+> the Kafka alerts stream has been removed. One poll worker now derives the same
+> alerts (with the unchanged pure logic in `pipeline/alerts.py`) and writes them
+> straight to the `alerts` table: the "poll CHP directly from a single worker
+> and push, no Kafka" alternative this ADR weighed and predicted it would pick in
+> production. The alert model (change events, chain-control transitions, CHP
+> categories) is unchanged.
+
 ## Context
 
 The readings pipeline (ADR-0006) emits a snapshot of every waypoint every five

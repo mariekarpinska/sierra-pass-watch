@@ -2,6 +2,11 @@
 
 2026-07-08
 
+> **Superseded in part by [ADR-0012](0012-direct-poll-ingestion.md) (2026-07-21):**
+> the Kafka transport described here has been removed. Ingestion now polls the
+> sources and writes straight to Postgres with the same `ON CONFLICT`
+> idempotency. The dbt and "not Spark" decisions below still stand.
+
 ## Context
 
 The pipeline turns six keyless public APIs (Open-Meteo, NWS, Caltrans
