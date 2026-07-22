@@ -17,6 +17,11 @@ with incidents as (
 
 -- Rank the updates in each collision cluster so the earliest wins. event_time
 -- then incident_id is a total order, so the pick is stable between runs.
+--
+-- Known limit: two genuinely distinct collisions in the same mile bin within the
+-- same hour collapse to one row, so the count can be low. incident_id is the true
+-- identity; this is accepted because collisions on these routes are rare enough
+-- that a same-bin, same-hour pair is unlikely (and the data is provisional).
 deduped as (
     select
         *,
