@@ -17,4 +17,7 @@ select
     weather_regime,      -- fetched at collection, or filled by the incidents backfill
     observed_at
 from {{ source('bronze', 'incidents') }}
-where event_time is not null
+-- The poller only writes collisions today, but filter explicitly so the model
+-- stays correct if the bronze table ever holds other categories. event_time is
+-- NOT NULL in the schema, so no null-guard is needed here.
+where category = 'COLLISION'
