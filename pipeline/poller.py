@@ -186,11 +186,25 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     log.info("poll worker starting: dry_run=%s interval=%ss", dry_run, interval)
+    # This long-lived loop is a local convenience. Production runs one cycle per
+    # EventBridge -> Lambda invocation (--once above), which opens a fresh
+    # connection every tick, so a dropped connection self-heals there. In the
+    # loop we reopen the connection after a failed cycle so it recovers too.
     while _running:
         try:
             poll_once(conn=conn, dry_run=dry_run)
         except Exception as exc:  # noqa: BLE001: a bad cycle must not kill the loop
             log.error("poll failed: %s", exc)
+            if not dry_run:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001: already-dead connection
+                    pass
+                try:
+                    conn = connect()
+                except Exception as reconnect_exc:  # noqa: BLE001: retry next cycle
+                    log.error("reconnect failed: %s", reconnect_exc)
+                    conn = None
         if _running:
             time.sleep(interval)
     if conn is not None:
