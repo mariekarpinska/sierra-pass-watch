@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from pipeline import poller
 from pipeline.alerts import Alert
 from pipeline.sources import openmeteo
@@ -119,3 +121,54 @@ class TestPollOnceWrites:
         assert captured["incidents"] == rows
         assert "state" in captured
         assert conn.commits == 1
+
+
+def _incident(incident_id: str) -> dict:
+    return {
+        "incident_id": incident_id,
+        "category": "COLLISION",
+        "type_text": "Trfc Collision",
+        "route_id": "I-80",
+        "lat": 39.3163,
+        "lon": -120.3208,
+        "measure_mi": 44.1,
+        "event_time": "2026-01-12T15:00:00+00:00",
+        "weather_regime": "SNOW",
+        "snowfall_rate_in_hr": 0.3,
+        "visibility_miles": 1.0,
+        "wind_gust_mph": 20.0,
+        "surface_temp_c": -2.0,
+        "source": "chp",
+    }
+
+
+@pytest.mark.integration
+class TestIncidentIdempotencyAgainstRealPostgres:
+    """The incidents writer against a throwaway real Postgres: re-inserting the
+    same collision (a re-poll) only ever no-ops, so ON CONFLICT gives one row per
+    incident. Replaces the old Kafka-consumer idempotency test (ADR-0012)."""
+
+    def test_re_inserting_a_collision_adds_nothing_new(self) -> None:
+        docker = pytest.importorskip("testcontainers.postgres")
+        import psycopg
+
+        from pipeline.database import insert_incidents
+
+        schema = (Path(__file__).parents[1] / "db" / "schema.sql").read_text(encoding="utf-8")
+        try:
+            container = docker.PostgresContainer("postgres:17-alpine")
+            container.start()
+        except Exception as exc:  # noqa: BLE001: no Docker means skip, never fail
+            pytest.skip(f"Docker unavailable: {exc}")
+        try:
+            with psycopg.connect(container.get_connection_url().replace("+psycopg2", "")) as conn:
+                conn.execute(schema)
+                batch = [_incident("inc-a"), _incident("inc-b")]
+                first = insert_incidents(conn, batch)
+                conn.commit()
+                replay = insert_incidents(conn, batch)  # a re-poll of the same collisions
+                conn.commit()
+                count = conn.execute("select count(*) from incidents").fetchone()[0]
+                assert (first, replay, count) == (2, 0, 2)
+        finally:
+            container.stop()
