@@ -148,6 +148,37 @@ export interface CrashPatternsResponse {
 }
 
 /**
+ * One live CHP collision on the drive's roads (ADR-0012). PROVISIONAL: CHP is
+ * unofficial and thin, so this is a fresh-but-unverified companion to the
+ * authoritative crash history, never a substitute. `regime` is the weather the
+ * collision was collected in; the point is the collision's own lat/lon.
+ */
+export interface Incident {
+  routeId: string;
+  mileBin: number;
+  regime: RegimeCode;
+  /** ISO time the collision happened (UTC). */
+  eventTime: string;
+  lat: number;
+  lon: number;
+}
+
+/**
+ * GET /api/incidents?from=&to=
+ *
+ * Live collisions collected on the journey's roads, newest first. `provisional`
+ * is always true, so the UI can never present it as the authoritative record.
+ * Empty is the normal case (collisions on these mountain roads are rare).
+ */
+export interface IncidentsResponse {
+  routeIds: string[];
+  /** Always true: this feed is provisional and unverified. */
+  provisional: boolean;
+  count: number;
+  incidents: Incident[];
+}
+
+/**
  * GET /api/journey-path?from=&to=
  *
  * The drive's road line for the route-overview map: one [lat, lon] path per

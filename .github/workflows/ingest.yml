@@ -55,21 +55,37 @@ jobs:
           pip install "dbt-postgres>=1.9,<2.0"
 
       # dbt reads discrete POSTGRES_* vars (warehouse/profiles.yml), so split the
-      # one URL into its parts here. The password is masked so it can't show up
-      # in logs.
+      # one URL into its parts here. Two output streams that must stay separate:
+      # ::add-mask:: is a workflow command, so it only works on the step's
+      # stdout, while KEY=VALUE pairs only work inside the GITHUB_ENV file.
+      # Mixing them (e.g. redirecting everything into GITHUB_ENV) makes the
+      # runner reject the mask line as "Invalid format" — failing the job and
+      # echoing the unmasked password into the log.
       - name: Derive dbt connection vars from DATABASE_URL
         run: |
-          python - <<'PY' >> "$GITHUB_ENV"
-          import os, urllib.parse as u
-          p = u.urlparse(os.environ["DATABASE_URL"])
+          python - <<'PY'
+          import os, sys, urllib.parse as u
+
+          url = os.environ.get("DATABASE_URL", "")
+          if not url:
+              sys.exit("DATABASE_URL secret is not set")
+          p = u.urlparse(url)
           pw = u.unquote(p.password or "")
-          print(f"::add-mask::{pw}")
-          print(f"POSTGRES_HOST={p.hostname}")
-          print(f"POSTGRES_PORT={p.port or 5432}")
-          print(f"POSTGRES_USER={u.unquote(p.username or '')}")
-          print(f"POSTGRES_PASSWORD={pw}")
-          print(f"POSTGRES_DB={(p.path or '/').lstrip('/')}")
-          print("POSTGRES_SSLMODE=require")
+
+          # Mask the password — both decoded and as it appears in the URL —
+          # before anything else this job prints could contain it.
+          for secret in {pw, p.password or ""}:
+              if secret:
+                  print(f"::add-mask::{secret}")
+          sys.stdout.flush()
+
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"POSTGRES_HOST={p.hostname}\n")
+              env.write(f"POSTGRES_PORT={p.port or 5432}\n")
+              env.write(f"POSTGRES_USER={u.unquote(p.username or '')}\n")
+              env.write(f"POSTGRES_PASSWORD={pw}\n")
+              env.write(f"POSTGRES_DB={(p.path or '/').lstrip('/')}\n")
+              env.write("POSTGRES_SSLMODE=require\n")
           PY
 
       # Bronze tables are `create table if not exists`, so applying the schema
@@ -92,6 +108,13 @@ jobs:
 
       - name: Ingest recent weather
         run: python -m pipeline.backfill weather --start "${{ steps.window.outputs.start }}" --end "${{ steps.window.outputs.end }}"
+
+      # Fill the weather on any live collision whose on-collision fetch failed
+      # (ADR-0012). The poll worker collects collisions continuously between
+      # runs; this tops up the few that are missing weather, so the mart below
+      # folds in genuinely new, fully-labelled rows day over day.
+      - name: Fill missing collision weather
+        run: python -m pipeline.backfill incidents
 
       # Crash data changes yearly, so it's off by default. Turn it on from the
       # Actions tab when a new year's CCRS extract is published.

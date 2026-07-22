@@ -92,13 +92,16 @@ only reviewed code can deploy, and only invited collaborators can get code onto
 
 ### Why scheduled batch ingestion, not the streaming loop
 
-[ADR-0006](0006-data-plane.md) already established two ingestion paths on
-purpose: streaming (producer → Kafka → consumer) as the *demonstration*, and
-batch (fetch → Postgres → `dbt build`) as the path that needs no always-on
-broker. Production uses the batch path, on a daily GitHub Actions cron. The data
-changes slowly (weather in minutes, crashes yearly), so a constantly-running
-Kafka consumer would be paying for throughput that never arrives. The cron runs
-for about a minute a day and leaves nothing switched on.
+The daily GitHub Actions cron (`ingest.yml`) runs the batch path (fetch →
+Postgres → `dbt build`) with no always-on broker. It runs for about a minute a
+day and leaves nothing switched on.
+
+> **Refined by [ADR-0012](0012-direct-poll-ingestion.md) (2026-07-21):** Kafka
+> is now gone entirely (this ADR originally weighed batch against a streaming
+> Kafka loop). Two schedules remain, both broker-free: a frequent poll worker
+> (every 1–2 minutes, EventBridge → Lambda) that collects live CHP collisions
+> with their weather, and this daily cron that rebuilds the marts over what the
+> poller has accumulated. CCRS crash refresh stays on-demand/annual.
 
 ### Why Neon now, RDS later
 

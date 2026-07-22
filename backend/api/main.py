@@ -2,8 +2,8 @@
 
 Endpoints match the frontend contract (frontend/src/api/types.ts) field for
 field, and only what the UI consumes exists: /api/health, /api/towns,
-/api/journey, /api/journey-path, /api/crash-patterns. A later branch adds
-the alerts feed, bringing its own contract when it lands.
+/api/journey, /api/journey-path, /api/crash-patterns, /api/incidents (the
+provisional live-collision feed, ADR-0012).
 
 Run locally (the Vite dev server proxies /api here):
 
@@ -29,6 +29,7 @@ from api.crashes import (
     CrashHistoryStore,
     PostgresCrashHistoryStore,
     build_crash_patterns,
+    build_incidents,
     get_crash_store,
     segment_legs,
 )
@@ -42,6 +43,7 @@ from api.paths import DriveLines, get_drive_lines
 from api.schemas import (
     CrashPatternsResponse,
     Health,
+    IncidentsResponse,
     JourneyLeg,
     JourneyPathResponse,
     JourneyResponse,
@@ -309,6 +311,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bins = await run_in_threadpool(store.bins, legs)
         causes = await run_in_threadpool(store.causes, legs)
         return build_crash_patterns(route_ids, bins, causes)
+
+    # Live collisions collected on the journey's roads (ADR-0012), newest
+    # first, always labelled provisional. Named by its towns like the other
+    # journey endpoints; no departure, because this is "what's been reported
+    # live on these roads lately", not the forecast-matched crash history.
+    # `def` on the worker threadpool for the one sync database read, same as
+    # crash-patterns. Missing params are a 400; an unknown town or unbuilt pair
+    # is a 404.
+    @app.get("/api/incidents", response_model=IncidentsResponse)
+    async def incidents(
+        from_: str | None = Query(default=None, alias="from"),
+        to: str | None = None,
+        store: CrashHistoryStore = Depends(get_crash_store),
+        index: JourneyIndex = Depends(get_journey_index),
+    ):
+        resolved = resolve_or_error(index, from_, to)
+        if isinstance(resolved, JSONResponse):
+            return resolved
+        route_ids = list(dict.fromkeys(resolved.via))
+        rows = await run_in_threadpool(store.recent_incidents, route_ids)
+        return build_incidents(route_ids, rows)
 
     return app
 

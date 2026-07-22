@@ -4,7 +4,7 @@ sources:
   - name: bronze
     description: >
       Raw landing tables in the public schema, written only by the pipeline
-      (the Kafka consumers and the backfill). dbt reads them and never writes
+      (the poll worker and the backfill). dbt reads them and never writes
       them. See pipeline/db/schema.sql for the DDL.
     schema: public
     tables:
@@ -37,8 +37,8 @@ sources:
       - name: alerts
         description: >
           Near-real-time change events (chain-control transitions and CHP
-          incidents), written by the alert consumer (ADR-0008). One row per
-          change, alert_id is the idempotency key.
+          incidents), written by the poll worker (ADR-0008, ADR-0012). One row
+          per change, alert_id is the idempotency key.
         columns:
           - name: alert_id
             tests: [not_null, unique]
@@ -50,3 +50,23 @@ sources:
                     values: [CHAIN_CONTROL, INCIDENT]
           - name: event_time
             tests: [not_null]
+
+      - name: incidents
+        description: >
+          Live CHP collisions collected by the poll worker, each with the
+          weather fetched for its point at collection time (ADR-0012). The
+          PROVISIONAL companion to the authoritative `crashes` table; feeds
+          mart_incident_conditions only. incident_id is the idempotency key.
+        columns:
+          - name: incident_id
+            tests: [not_null, unique]
+          - name: route_id
+            tests: [not_null]
+          - name: event_time
+            tests: [not_null]
+          - name: weather_regime
+            tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: "{{ var('regimes') }}"

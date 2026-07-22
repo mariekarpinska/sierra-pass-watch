@@ -2,8 +2,8 @@
 -- transitions and CHP incidents, newest first.
 --
 -- This mart is a VIEW, not a table, on purpose. Every other mart is a batch
--- table rebuilt on the pipeline's schedule, but the alert stream runs on a
--- ~60-second clock (alert_consumer writes the bronze `alerts` table
+-- table rebuilt on the pipeline's schedule, but the alerts arrive on a
+-- ~1-2-minute clock (the poll worker writes the bronze `alerts` table
 -- continuously). A table would only be as fresh as the last `dbt run`; a view
 -- reads bronze at query time, so `now()` below is evaluated per request and the
 -- feed is always current. This is the one place the batch warehouse yields to

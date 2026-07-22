@@ -14,12 +14,12 @@ backend (Python), wired together through an explicit, documented HTTP layer.
 ```
 ├─ frontend/     Vite + React + TypeScript SPA
 ├─ backend/      FastAPI service (Python 3.13)
-├─ pipeline/     Python ingestion: producer → Kafka → consumer → Postgres,
+├─ pipeline/     Python ingestion: poll worker → Postgres (no broker, ADR-0012),
 │                plus backfill (weather history + CCRS crashes)
 ├─ shared/       weather-regime-cases.json — the classifier's golden contract
 ├─ docs/         Architecture notes, ADRs
 ├─ SECURITY.md   Running log of security considerations
-└─ docker-compose.yml   Local infrastructure (Postgres + Kafka)
+└─ docker-compose.yml   Local infrastructure (Postgres)
 ```
 
 ## Prerequisites
@@ -73,41 +73,39 @@ pip install -e ".[dev]"
 ### 1. Offline — no infrastructure
 
 ```bash
-python -m pipeline.producer --dry-run --once   # 57 events from fixtures: no network, no Kafka
+python -m pipeline.poller --dry-run --once     # alerts + collisions from fixtures: no network, no DB
 pytest -m "not integration"                    # the full pipeline unit suite
 ```
 
-### 2. Full streaming stack (Postgres + Kafka)
+### 2. Full stack (Postgres, no broker)
 
 You only need **Docker Desktop running** (the engine) — `docker compose up -d`
-creates *and* starts the containers.
+creates *and* starts the container.
 
 ```bash
-docker compose up -d          # start Postgres + Kafka; schema.sql auto-applies on first start
-docker compose ps             # wait until BOTH show "healthy" (~30–60s) before continuing
+docker compose up -d          # start Postgres; schema.sql auto-applies on first start
+docker compose ps             # wait until it shows "healthy" (~10–30s) before continuing
 ```
 
-If one exits, debug with (insert 'kafka' or 'postgres' into name)
+If it exits, debug with:
 ```bash
-docker compose ps -a                             # confirm kafka/postgres "Exited"
-docker compose up -d --force-recreate name       # recreate it, if not kafka then
-docker compose logs name --tail 20               # only if it exits AGAIN
+docker compose ps -a                                 # confirm postgres "Exited"
+docker compose up -d --force-recreate postgres       # recreate it
+docker compose logs postgres --tail 20               # only if it exits AGAIN
 ```
 
-Then, in two terminals (both with the venv active):
+Then run one poll cycle (venv active). The poll worker collects live CHP
+collisions and alerts and writes them straight to Postgres, no broker
+(ADR-0012); it needs internet for the keyless feeds:
 
 ```bash
-# terminal A — drain Kafka → Postgres, batched & idempotent (Ctrl+C after it logs a flush)
-python -m pipeline.consumer
-
-# terminal B — one live poll of the public sources → Kafka (keyless APIs; needs internet)
-python -m pipeline.producer --once
+python -m pipeline.poller --once
 ```
 
-Verify the bronze rows landed (one line, so it pastes cleanly in any shell):
+Verify the collisions landed (one line, so it pastes cleanly in any shell):
 
 ```bash
-docker compose exec postgres psql -U app -d app -c "select source, count(*), count(distinct weather_regime) as regimes from raw_road_events group by 1;"
+docker compose exec postgres psql -U app -d app -c "select route_id, count(*), count(distinct weather_regime) as regimes from incidents group by 1;"
 ```
 
 ### 3. Crash backfill → per-mile bins
@@ -115,7 +113,7 @@ docker compose exec postgres psql -U app -d app -c "select source, count(*), cou
 ```bash
 python -m pipeline.sources.ccrs --years 2024 2025   # stream statewide CSV, keep Sierra rows → data/ccrs/
 python -m pipeline.backfill crashes                 # load crashes, each with measure_mi
-python -m pipeline.backfill weather --start 2025-11-01 --end 2026-03-31   # hourly history (no Kafka)
+python -m pipeline.backfill weather --start 2025-11-01 --end 2026-03-31   # hourly history
 
 # per-mile grain preview: route × mile bin × regime (single line — paste as-is)
 docker compose exec postgres psql -U app -d app -c "select route_id, floor(measure_mi) as mile_bin, weather_regime, count(*) from crashes where measure_mi is not null group by 1,2,3 order by count desc limit 15;"
@@ -133,11 +131,10 @@ docker compose down -v    # also wipe the volume (schema.sql re-applies on next 
 
 ### Troubleshooting
 
-- **Containers stay "Created" / `docker compose ps` is empty.** Another stack
-  is already bound to `127.0.0.1:5432` or `:9092`, so these can't start. Find
-  it with `docker ps` and stop it (`docker stop <name>`), or remap this
-  project's host ports in `.env` (`POSTGRES_PORT`, `KAFKA_BOOTSTRAP_SERVERS`)
-  and `docker-compose.yml`.
+- **Container stays "Created" / `docker compose ps` is empty.** Another stack
+  is already bound to `127.0.0.1:5432`, so Postgres can't start. Find it with
+  `docker ps` and stop it (`docker stop <name>`), or remap this project's host
+  port in `.env` (`POSTGRES_PORT`) and `docker-compose.yml`.
 - **Tables missing after `up`.** `schema.sql` runs only on an *empty* data
   volume. If you have an older volume, run `docker compose down -v` once, then
   `docker compose up -d`. Confirm with
@@ -176,7 +173,7 @@ left running. The plain-English "why" is in
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md) — system overview
-- [docs/deployment.md](docs/deployment.md) — how it goes live and stays fresh (batch vs. streaming, OIDC, where Postgres lives)
+- [docs/deployment.md](docs/deployment.md): how it goes live and stays fresh (poll worker + daily batch, OIDC, where Postgres lives)
 - [docs/weather-regimes.md](docs/weather-regimes.md) — the regime vocabulary and its thresholds
 - [docs/adr/](docs/adr/) — architecture decision records
 - [SECURITY.md](SECURITY.md) — running log of security considerations

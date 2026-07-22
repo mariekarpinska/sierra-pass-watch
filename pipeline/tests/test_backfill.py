@@ -2,9 +2,31 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from pipeline.backfill import _parse_datetime, crash_row, weather_events_for_segment
+from pipeline.backfill import (
+    _closest_archive_hour,
+    _parse_datetime,
+    crash_row,
+    weather_events_for_segment,
+)
 from pipeline.database import ROAD_EVENT_COLUMNS
 from pipeline.sources.openmeteo import WeatherReading
+
+
+def _hour(ts: str) -> WeatherReading:
+    return WeatherReading(timestamp=ts, snowfall_rate_in_hr=None,
+                          visibility_miles=None, wind_gust_mph=None, temperature_c=None)
+
+
+class TestClosestArchiveHour:
+    def test_matches_the_collision_hour(self) -> None:
+        readings = [_hour("2026-07-21T14:00"), _hour("2026-07-21T15:00"), _hour("2026-07-21T16:00")]
+        event_time = datetime(2026, 7, 21, 15, 7, tzinfo=timezone.utc)
+        assert _closest_archive_hour(readings, event_time).timestamp == "2026-07-21T15:00"
+
+    def test_none_when_the_hour_is_absent(self) -> None:
+        readings = [_hour("2026-07-21T14:00")]
+        event_time = datetime(2026, 7, 21, 23, 0, tzinfo=timezone.utc)
+        assert _closest_archive_hour(readings, event_time) is None
 
 
 def _ccrs_row(**overrides) -> dict:

@@ -5,6 +5,7 @@ import { Planner, type Plan } from './components/Planner'
 import { WeatherSection } from './components/WeatherSection'
 import { RouteOverview } from './components/RouteOverview'
 import { CrashHistory } from './components/CrashHistory'
+import { IncidentsSection } from './components/IncidentsSection'
 import { MuirQuote } from './components/MuirQuote'
 import { Footer, DisclaimerPill } from './components/Footer'
 import { getJourney } from './api/journey'
@@ -72,6 +73,7 @@ export function App() {
                 <WeatherSection journey={result.journey} />
                 <RouteOverview journey={result.journey} />
                 <CrashHistory journey={result.journey} />
+                <IncidentsSection journey={result.journey} />
               </>
             )}
           </div>

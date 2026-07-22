@@ -6,19 +6,20 @@
 
 ```mermaid
 flowchart LR
-  SRC[keyless public sources\nOpen-Meteo, CWWP2, NWS, USGS, CCRS] --> PROD[producers]
-  PROD -->|Kafka| CONS[consumers]
-  PROD -.->|batch backfill| PG
-  CONS --> PG[(Postgres bronze\nraw_road_events, crashes, alerts)]
-  PG -->|dbt build| MARTS[(analytics marts\npatterns, causes, active alerts)]
+  SRC[keyless public sources\nOpen-Meteo, CWWP2, USGS, CCRS, CHP] --> POLL[poll worker\n~1-2 min, no broker]
+  SRC -.->|batch backfill| PG
+  POLL --> PG[(Postgres bronze\nraw_road_events, crashes, alerts, incidents)]
+  PG -->|dbt build| MARTS[(analytics marts\npatterns, causes, incident conditions, active alerts)]
   MARTS --> API[FastAPI\nuvicorn]
   API -->|/api proxied| FE[React + TS SPA]
 ```
 
-- **Ingestion** lands raw rows in the Postgres bronze layer over two idempotent
-  paths (streaming producer -> Kafka -> consumer, and a batch backfill twin),
-  plus a parallel near-real-time alert stream
-  ([ADR-0006](adr/0006-data-plane.md), [ADR-0008](adr/0008-near-realtime-alerts.md)).
+- **Ingestion** lands raw rows in the Postgres bronze layer with no broker
+  (ADR-0012): a frequent poll worker writes alerts and live CHP collisions (each
+  paired with the weather at its point) straight to Postgres, and a batch
+  backfill twin loads history the same idempotent way
+  ([ADR-0006](adr/0006-data-plane.md), [ADR-0008](adr/0008-near-realtime-alerts.md),
+  [ADR-0012](adr/0012-direct-poll-ingestion.md)).
 - **Transformation** is dbt: staging views over bronze, then the marts the API
   queries. Crashes key on a per-mile bin, weather on anchor towns
   ([ADR-0007](adr/0007-spatial-model-per-mile-bins.md)). See

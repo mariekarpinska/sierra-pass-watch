@@ -39,49 +39,50 @@ separately ([deploy.yml](../.github/workflows/deploy.yml) and
 Everything runs on **AWS**, except the database, which is on **Neon** for now
 (a hosted Postgres) and moves to **AWS RDS** later. Why that split is below.
 
+Ingestion is not shown above because it is not on GitHub's clock alone: a third
+scheduled path, an **EventBridge rule firing a Lambda every ~1–2 minutes**, runs
+the poll worker to collect live CHP collisions and alerts straight into Postgres
+(ADR-0012). It leaves nothing switched on between firings, same as the daily
+cron. See "Two schedules, no broker" below.
+
 ---
 
-## Why scheduled batch ingestion, and not a constantly-running Kafka loop
+## Two schedules, no broker
 
-This is the most important design question, so here it is head-on.
+There is no message broker anywhere (ADR-0012). Ingestion is two broker-free
+schedules, each writing straight to Postgres with `ON CONFLICT` idempotency:
 
-**The streaming loop (producer → Kafka → consumer) is a demo, not the
-production path.** The project has it to show the pattern — a durable,
-replayable log between "fetch data" and "store data" — and it's the right tool
-*when data arrives fast and never stops*. But this data does not. The sources
-are public weather and crash APIs that change slowly: new weather readings every
-few minutes at most, new crash records once a year. At that pace, keeping a
-Kafka broker and a consumer process running 24/7 buys you nothing — you'd be
-paying (in money and in "something that has to stay up") for throughput you'll
-never use. The pipeline's own consumer says this out loud in its docstring:
-"a plain scheduled poller writing straight to Postgres would meet the same
-dashboard need."
+1. **A frequent poll worker**, every ~1–2 minutes, that collects live CHP
+   collisions (each paired with the weather at its point) and road-state alerts.
+   CHP is a *live* feed (events age out), so it has to be polled often to catch
+   anything. Deployed as **EventBridge → Lambda**: a scheduled rule fires the
+   worker, the Lambda runs one cycle and exits, and nothing stays switched on
+   between firings. Frequency and transport are separate concerns; frequent
+   collection never needed a broker.
+2. **A daily batch cron** (`ingest.yml`) that refreshes recent weather, tops up
+   any collision the on-collision fetch missed, and rebuilds the dbt marts over
+   everything the poll worker has accumulated. It runs for about a minute a day.
 
-So the production path is the **batch path**: once a day, a job wakes up, fetches
-what's new, rebuilds the tables the API serves, and exits. This is
-[ADR-0006](adr/0006-data-plane.md)'s "two ingestion paths on purpose" — the
-streaming one to demonstrate, the batch one to actually run.
+Earlier this ran a Kafka producer/consumer as the streaming demonstration.
+[ADR-0012](adr/0012-direct-poll-ingestion.md) removed it: at this volume the
+broker never had enough to do, and the on-collision weather fetch made the poll
+worker a genuinely useful pipeline rather than a health check. The
+`ON CONFLICT` idempotency that made a Kafka replay safe is still on every write.
 
-**What running the streaming loop constantly would actually take:**
+**Why not keep a long-running process (broker or not) always on?**
 
-- A Kafka broker that is always on (a managed one like AWS MSK, or a container
-  you keep running). That is the single biggest always-on cost, for a message
-  rate a laptop could handle in its sleep.
-- A consumer process that is always on, connected to both Kafka and Postgres,
-  restarted automatically if it dies.
-- A producer process that is always on, polling the sources on a timer.
-- Monitoring, so you notice when any of those three quietly stops.
+- A constantly-running process is a constantly-running cost and one more thing
+  that has to stay up, for a trickle of data a scheduled invocation handles.
+- A serverless invocation (EventBridge → Lambda for the poll worker, GitHub
+  Actions for the daily build) leaves nothing switched on and restarts cleanly
+  every firing.
 
-That's three long-running processes plus a broker, to move a trickle of data.
-The batch job replaces all of it with one script that runs for a minute a day.
+### Could we just run ingestion constantly on a PC, pushing straight to the database?
 
-### Could we just run the stream constantly on a PC, pushing straight to the database?
-
-Technically, yes. We can run `docker compose up` (Postgres + Kafka), start
-`pipeline.producer` and `pipeline.consumer`, and it will happily stream into
-Postgres for as long as the machine stays on. That's exactly what the README's
-"full streaming stack" section is for, and it's the best way to *see* the
-streaming path work.
+Technically, yes. We can run `docker compose up` (Postgres), start
+`python -m pipeline.poller`, and it will happily write into Postgres for as long
+as the machine stays on. That's exactly what the README's "full stack" section
+is for, and it's the best way to *see* the ingestion path work.
 
 But as a way to keep a live website's data fresh, it's the wrong tool — for
 reasons that have nothing to do with the code:
@@ -201,7 +202,9 @@ once a day, on GitHub's machines:
 
 1. makes sure the database tables exist (idempotent, so it self-heals a fresh DB),
 2. fetches the recent weather history,
-3. runs `dbt build` — rebuilds the marts the API serves **and runs dbt's data
+3. fills the weather on any live collision the on-collision fetch missed
+   (ADR-0012), so the mart folds in fully-labelled new rows,
+4. runs `dbt build`, which rebuilds the marts the API serves **and runs dbt's data
    tests**, so a broken upstream feed fails the job loudly instead of quietly
    corrupting the dashboard.
 
@@ -232,10 +235,14 @@ this choice).
 - **Neon (database):** free tier today.
 - **GitHub Actions (deploy + ingest):** free for a public repo; the daily ingest
   job runs for about a minute.
+- **EventBridge + Lambda (poll worker):** negligible. A rule that fires every
+  1–2 minutes and a function that runs for a second or two each time, well inside
+  the free tier at this rate.
 - **ECR (image storage):** cents; old images auto-expire (keep last 10).
 
-The deliberately-not-chosen costs are the point: no always-on Kafka broker, no
-always-on consumer, no Spark cluster, no orchestration server. Those were all
+The removed and deliberately-not-chosen costs are the point: no message broker
+(the Kafka layer was removed in [ADR-0012](adr/0012-direct-poll-ingestion.md)),
+no always-on consumer, no Spark cluster, no orchestration server. Those were all
 considered and rejected for this scale ([ADR-0006](adr/0006-data-plane.md),
 [ADR-0011](adr/0011-deployment-and-cicd.md)).
 
@@ -245,5 +252,6 @@ considered and rejected for this scale ([ADR-0006](adr/0006-data-plane.md),
 
 - [infra/cdk/README.md](../infra/cdk/README.md) — the exact commands to stand this up
 - [ADR-0011](adr/0011-deployment-and-cicd.md) — the deployment/CD decision and alternatives
-- [ADR-0006](adr/0006-data-plane.md) — why batch and streaming both exist
+- [ADR-0012](adr/0012-direct-poll-ingestion.md): direct-poll ingestion, no broker
+- [ADR-0006](adr/0006-data-plane.md): the data-plane choices (dbt, and why not Spark)
 - [architecture.md](architecture.md) — the system overview

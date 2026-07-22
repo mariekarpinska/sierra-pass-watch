@@ -106,3 +106,23 @@ values
      'Collision reported on I-80 near Donner Summit', 'Two vehicles, right lane blocked',
      39.3172, -120.3215, 44.5, now() - interval '20 minute', 'chp')
 on conflict (alert_id) do nothing;
+
+-- Live-collision fixtures (ADR-0012). Two updates of ONE physical collision land
+-- in the same (route, mile bin 44, hour) cluster, so the mart's dedup must
+-- collapse them to a single row (the grain test proves it). A second collision
+-- on US-50 has UNKNOWN weather (the on-collision fetch failed), so the accepted
+-- regimes include UNKNOWN. A collision off any polyline (null measure) drops out
+-- of the per-mile mart, exactly like a crash with no measure.
+insert into incidents
+    (incident_id, category, type_text, route_id, lat, lon, measure_mi, event_time,
+     weather_regime, snowfall_rate_in_hr, visibility_miles, wind_gust_mph, surface_temp_c, source)
+values
+    ('inc-1', 'COLLISION', 'Trfc Collision-1141', 'I-80', 39.3172, -120.3215, 44.50,
+     '2026-01-11 08:05:00+00', 'SNOW', 0.3, 1.5, 20.0, -2.0, 'chp'),
+    ('inc-2', 'COLLISION', 'Trfc Collision-1179 (dup)', 'I-80', 39.3170, -120.3210, 44.60,
+     '2026-01-11 08:20:00+00', 'SNOW', 0.3, 1.5, 20.0, -2.0, 'chp'),
+    ('inc-3', 'COLLISION', 'Trfc Collision-1183', 'US-50', 38.8130, -120.0300, 40.00,
+     '2026-01-11 09:00:00+00', 'UNKNOWN', null, null, null, null, 'chp'),
+    ('inc-4', 'COLLISION', 'Trfc Collision off line', 'US-6', 37.3636, -118.3951, null,
+     '2026-02-01 16:00:00+00', 'CLEAR_DRY', 0.0, 10.0, 5.0, 3.0, 'chp')
+on conflict (incident_id) do nothing;

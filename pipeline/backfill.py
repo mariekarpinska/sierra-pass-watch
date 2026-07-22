@@ -1,20 +1,23 @@
-"""Backfill — the scheduled/batch twin of the streaming path.
+"""Backfill: the scheduled/batch loaders that write the bronze tables directly.
 
-Two loaders, both writing the same bronze tables the consumer writes, both
-idempotent (natural-key ON CONFLICT), so streaming and batch can never
-conflict:
+Three loaders, all idempotent (natural-key ON CONFLICT / targeted UPDATE), so a
+re-run is always safe:
 
-* ``weather``  — replay hourly history for every catalogue waypoint from the
-  Open-Meteo archive, label each hour with the SAME classifier the producer
-  uses, insert into raw_road_events (source='backfill').
-* ``crashes``  — load the CCRS CSV produced by ``python -m
-  pipeline.sources.ccrs``: attribute each report to a catalogue route
-  (parse_route + range polygon), label it via classify_crash_report, insert
+* ``weather``: replays hourly history for every catalogue waypoint from the
+  Open-Meteo archive, labels each hour with the SAME classifier the poll worker
+  uses, inserts into raw_road_events (source='backfill').
+* ``crashes``: loads the CCRS CSV produced by ``python -m
+  pipeline.sources.ccrs``: attributes each report to a catalogue route
+  (parse_route + range polygon), labels it via classify_crash_report, inserts
   into crashes.
+* ``incidents``: fills the weather for live collisions whose on-collision fetch
+  failed (regime UNKNOWN), from the archive at each collision's own hour and
+  point (ADR-0012).
 
 Usage:
     python -m pipeline.backfill weather --start 2025-11-01 --end 2026-03-31
     python -m pipeline.backfill crashes            # reads data/ccrs/crashes.csv
+    python -m pipeline.backfill incidents          # fill any missing collision weather
 """
 from __future__ import annotations
 
@@ -24,7 +27,13 @@ import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from pipeline.database import connect, insert_crashes, insert_road_events
+from pipeline.database import (
+    connect,
+    incidents_missing_weather,
+    insert_crashes,
+    insert_road_events,
+    update_incident_weather,
+)
 from pipeline.polylines import measure_for
 from pipeline.regime import classify_conditions, classify_crash_report
 from pipeline.routes import SEGMENTS, in_sierra, parse_direction, parse_route
@@ -90,6 +99,74 @@ def backfill_weather(start: date, end: date) -> int:
         conn.close()
     log.info("weather backfill complete: rows=%d", total)
     return total
+
+
+# ---------------------------------------------------------------------------
+# incident weather → incidents (the mitigation for a failed on-collision fetch)
+# ---------------------------------------------------------------------------
+
+def _closest_archive_hour(readings: list, event_time: datetime):
+    """The archive reading whose hour matches the collision's, or None.
+
+    Archive timestamps are naive UTC hours ("2026-07-21T15:00"); we match the
+    collision's hour exactly, since the archive is hourly and that is as precise
+    as it gets.
+    """
+    target_hour = event_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00")
+    for reading in readings:
+        if reading.timestamp[:16] == target_hour:
+            return reading
+    return None
+
+
+def backfill_incident_weather() -> int:
+    """Fill the weather for collisions whose on-collision fetch failed.
+
+    Looks each one up in the Open-Meteo archive for its own hour and point. The
+    archive lags real time by a few days, so a very recent collision stays
+    UNKNOWN until the archive catches up and a later run fills it. Returns the
+    number of collisions filled.
+    """
+    conn = connect()
+    filled = 0
+    try:
+        pending = incidents_missing_weather(conn)
+        for inc in pending:
+            event_time: datetime = inc["event_time"]
+            day = event_time.astimezone(timezone.utc).date()
+            try:
+                readings = openmeteo.fetch_archive_hours(inc["lat"], inc["lon"], day, day)
+            except Exception as exc:  # noqa: BLE001: skip one, keep the sweep
+                log.warning("incident archive failed: id=%s error=%s", inc["incident_id"], exc)
+                continue
+            reading = _closest_archive_hour(readings, event_time)
+            if reading is None:
+                continue
+            regime = classify_conditions(
+                snowfall_rate_in_hr=reading.snowfall_rate_in_hr,
+                visibility_miles=reading.visibility_miles,
+                wind_gust_mph=reading.wind_gust_mph,
+                surface_temp_c=reading.temperature_c,
+            )
+            if regime == "UNKNOWN":
+                continue  # archive had nothing usable; leave it for a later run
+            update_incident_weather(
+                conn,
+                inc["incident_id"],
+                {
+                    "weather_regime": regime,
+                    "snowfall_rate_in_hr": reading.snowfall_rate_in_hr,
+                    "visibility_miles": reading.visibility_miles,
+                    "wind_gust_mph": reading.wind_gust_mph,
+                    "surface_temp_c": reading.temperature_c,
+                },
+            )
+            conn.commit()
+            filled += 1
+    finally:
+        conn.close()
+    log.info("incident weather backfill complete: filled=%d", filled)
+    return filled
 
 
 # ---------------------------------------------------------------------------
@@ -244,12 +321,18 @@ def main() -> None:
     crashes = sub.add_parser("crashes", help="CCRS CSV → crashes")
     crashes.add_argument("--csv", type=Path, default=ccrs.OUTPUT_CSV)
 
+    sub.add_parser("incidents", help="fill missing weather on live collisions")
+
     args = parser.parse_args()
     if args.command == "weather":
         count = backfill_weather(args.start, args.end)
+        print(f"{args.command}: {count} rows inserted")
+    elif args.command == "incidents":
+        count = backfill_incident_weather()
+        print(f"{args.command}: {count} collisions filled")
     else:
         count = backfill_crashes(args.csv)
-    print(f"{args.command}: {count} rows inserted")
+        print(f"{args.command}: {count} rows inserted")
 
 
 if __name__ == "__main__":

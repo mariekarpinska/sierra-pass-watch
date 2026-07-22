@@ -1,8 +1,8 @@
-"""Postgres access for the pipeline — one connection helper, two writers.
+"""Postgres access for the pipeline: one connection helper, a few writers.
 
-psycopg (v3) with plain parameterized SQL. Both writers are idempotent by
+psycopg (v3) with plain parameterized SQL. Every writer is idempotent by
 `ON CONFLICT DO NOTHING` against the table's natural key, which is what makes
-the consumer's at-least-once delivery and the backfill's re-runs safe.
+the poll worker's re-polls and the backfill's re-runs safe.
 """
 from __future__ import annotations
 
@@ -54,9 +54,9 @@ def connect() -> psycopg.Connection:
 def _insert_batch(conn: psycopg.Connection, sql: str, columns: tuple[str, ...], rows: list[dict]) -> int:
     """Executemany one idempotent INSERT; returns rows actually inserted.
 
-    Shared by all three writers — they differ only in their SQL and columns.
+    Shared by every writer; they differ only in their SQL and columns.
     Each dict is projected to a tuple in column order; ON CONFLICT DO NOTHING
-    makes re-inserts (Kafka replays, backfill re-runs) no-op.
+    makes re-inserts (a re-poll, a backfill re-run) no-op.
     """
     if not rows:
         return 0
@@ -69,9 +69,7 @@ def _insert_batch(conn: psycopg.Connection, sql: str, columns: tuple[str, ...], 
 def insert_road_events(conn: psycopg.Connection, events: list[dict]) -> int:
     """Insert a batch of road events; duplicates no-op. Returns rows inserted.
 
-    Caller owns the transaction: commit AFTER this returns, and only then
-    acknowledge upstream (Kafka offsets) — commit-db-then-commit-offsets is
-    the consumer's exactly-once-rows recipe.
+    Caller owns the transaction and commits after this returns.
     """
     return _insert_batch(conn, _ROAD_EVENT_SQL, ROAD_EVENT_COLUMNS, events)
 
@@ -98,6 +96,64 @@ _ALERT_SQL = (
 def insert_alerts(conn: psycopg.Connection, alerts: list[dict]) -> int:
     """Insert alert rows; existing alert_ids no-op. Returns rows inserted."""
     return _insert_batch(conn, _ALERT_SQL, ALERT_COLUMNS, alerts)
+
+
+# --- live CHP collisions (feat/direct-poll-ingestion, ADR-0012) ----------------
+
+INCIDENT_COLUMNS = (
+    "incident_id", "category", "type_text", "route_id", "lat", "lon",
+    "measure_mi", "event_time", "weather_regime", "snowfall_rate_in_hr",
+    "visibility_miles", "wind_gust_mph", "surface_temp_c", "source",
+)
+
+_INCIDENT_SQL = (
+    f"insert into incidents ({', '.join(INCIDENT_COLUMNS)}) "
+    f"values ({', '.join('%s' for _ in INCIDENT_COLUMNS)}) "
+    "on conflict (incident_id) do nothing"
+)
+
+
+def insert_incidents(conn: psycopg.Connection, incidents: list[dict]) -> int:
+    """Insert collision rows; existing incident_ids no-op. Returns rows inserted.
+
+    ON CONFLICT keeps the first update we saw for a collision, so the stored
+    weather is the weather at first sighting. Caller commits.
+    """
+    return _insert_batch(conn, _INCIDENT_SQL, INCIDENT_COLUMNS, incidents)
+
+
+def incidents_missing_weather(conn: psycopg.Connection) -> list[dict]:
+    """Collisions whose on-collision weather fetch failed (regime UNKNOWN).
+
+    Returns the point and time each one needs to look its weather up again.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "select incident_id, lat, lon, event_time from incidents "
+            "where weather_regime = 'UNKNOWN'"
+        )
+        return [
+            {"incident_id": r[0], "lat": r[1], "lon": r[2], "event_time": r[3]}
+            for r in cur.fetchall()
+        ]
+
+
+def update_incident_weather(conn: psycopg.Connection, incident_id: str, weather: dict) -> None:
+    """Fill in the weather for one collision the on-collision fetch missed.
+
+    ``weather`` carries weather_regime plus the four numeric fields. Caller
+    commits.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "update incidents set weather_regime = %(weather_regime)s, "
+            "snowfall_rate_in_hr = %(snowfall_rate_in_hr)s, "
+            "visibility_miles = %(visibility_miles)s, "
+            "wind_gust_mph = %(wind_gust_mph)s, "
+            "surface_temp_c = %(surface_temp_c)s "
+            "where incident_id = %(incident_id)s",
+            {**weather, "incident_id": incident_id},
+        )
 
 
 def load_alert_state(conn: psycopg.Connection) -> dict:

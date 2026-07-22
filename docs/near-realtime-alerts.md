@@ -1,12 +1,21 @@
 # Real-time alerts
 
-A second stream, parallel to the readings pipeline, that carries **changes**
-rather than snapshots: the events a driver wants pushed the second they happen.
-See [ADR-0008](adr/0008-near-realtime-alerts.md) for the decision and trade-offs.
+> **Superseded in part by [ADR-0012](adr/0012-direct-poll-ingestion.md):** the
+> Kafka stream shown below was removed. One poll worker (`pipeline/poller.py`)
+> now derives the same alerts with the unchanged pure logic in
+> `pipeline/alerts.py` and writes them straight to the `alerts` table: the
+> current shape is `poll worker (detect a change) ──► alerts table ──► notify()`,
+> no broker. The alert *model* (change events, chain-control transitions, CHP
+> categories, the notify() seam) is exactly as described here.
+
+Alerts carry **changes** rather than snapshots: the events a driver wants pushed
+the second they happen. See [ADR-0008](adr/0008-near-realtime-alerts.md) for the
+original decision and trade-offs, refined by
+[ADR-0012](adr/0012-direct-poll-ingestion.md).
 
 ```
-alert_producer ──► sierra.road.alerts ──► alert_consumer ──► alerts table
-   (detect a change, publish the diff)         (insert, then notify())
+poll worker ──► alerts table ──► notify()
+  (detect a change, insert, then notify)
 ```
 
 ## Honest scope

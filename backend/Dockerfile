@@ -7,8 +7,8 @@
 #   docker build -f backend/Dockerfile -t sierra-pass-watch-api .
 #
 # slim = the small Debian-based Python image: everything we need, none of the
-# build tools we don't (psycopg and confluent-kafka ship prebuilt Linux wheels,
-# so no compiler is required).
+# build tools we don't (psycopg ships prebuilt Linux wheels, so no compiler is
+# required).
 FROM python:3.13-slim
 
 # PYTHONUNBUFFERED  — print logs the instant they happen, so App Runner's log

@@ -9,16 +9,10 @@ would want the second it happens:
 * a new CHP incident, collision, hazard or closure, on a tracked route (the
   best-effort near-real-time layer).
 
-Why a stream at all: the alert producer polls each source once and publishes,
-so any number of consumers (the DB writer, a notifier, a future live map) get
-the update immediately without re-polling CHP and without a separate relay
-service. That fan-out decoupling is the honest justification. It is a
-nice-to-have at this volume, not a necessity — a single poller could push
-directly — so the value here is decoupling and replay, not throughput.
-
 ``derive_alerts`` is a pure fold: (previous state, current observations) →
-(alerts to emit, next state). The runner (pipeline/alert_producer.py) owns the
-I/O, so all the logic here is unit-testable against fixtures.
+(alerts to emit, next state). The runner (pipeline/poller.py) owns the I/O and
+writes the alerts straight to Postgres (no broker, ADR-0012), so all the logic
+here is unit-testable against fixtures.
 """
 from __future__ import annotations
 
@@ -43,7 +37,7 @@ _INCIDENT_TTL_HOURS = 6
 
 @dataclass(frozen=True)
 class Alert:
-    """One push-worthy change. Serialized to JSON for Kafka, then to the alerts table."""
+    """One push-worthy change. Written by the poll worker to the alerts table."""
 
     alert_id: str        # idempotency key: re-emitting only ever no-ops
     kind: str            # CHAIN_CONTROL | INCIDENT
@@ -114,10 +108,10 @@ def derive_chain_alerts(prev_state: dict, chain_controls: list, now: str) -> tup
         alerts.append(
             Alert(
                 # Deterministic id — identifies the transition, not the poll.
-                # A crash-replay or Kafka redelivery re-derives the same
-                # prev->status and so the same id, which the consumer's
-                # ON CONFLICT (alert_id) DO NOTHING dedups (no duplicate row).
-                # The incident id chp:{id} is stable the same way. Trade-off:
+                # A re-poll re-derives the same prev->status and so the same id,
+                # which the alerts table's ON CONFLICT (alert_id) DO NOTHING
+                # dedups (no duplicate row). The incident id chp:{id} is stable
+                # the same way. Trade-off:
                 # an identical transition that genuinely recurs (chains lift,
                 # then re-form to the same level) collapses to one alerts row.
                 alert_id=f"{key}:{prev}->{status}",
