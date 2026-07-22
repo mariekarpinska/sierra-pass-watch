@@ -64,7 +64,11 @@ def notify(alert: Alert) -> None:
 def fetch_point_weather(lat: float, lon: float) -> openmeteo.WeatherReading | None:
     """Live weather for one collision's exact point, or None if the fetch fails.
 
-    A single-point call, so one failed collision never nulls another's weather.
+    This is the weather NOW, at collection time, not necessarily at the
+    collision's event_time (CHP log_time can lag by hours). For a freshly polled
+    collision the two are close; for a failed fetch, the incidents backfill fills
+    it later from the archive keyed on the event hour. A single-point call, so
+    one failed collision never nulls another's weather.
     """
     try:
         readings = openmeteo.fetch_current_batch([(lat, lon)])
