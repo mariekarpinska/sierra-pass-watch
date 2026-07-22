@@ -249,7 +249,9 @@ _CAUSES_SQL = sql.SQL("""
 # Recent live collisions on the journey's roads, newest first. Scoped to the
 # whole route (not the driven stretches): the provisional panel is a plain "what
 # has been reported live on these roads lately", not the forecast-matched history
-# the crash-patterns endpoint composes. All values parameterized.
+# the crash-patterns endpoint composes. Bounded to the last 90 days so the feed
+# stays "recent" and an old provisional collision can't linger in it. All values
+# parameterized.
 _INCIDENTS_SQL = sql.SQL("""
     select
         route_id,
@@ -260,6 +262,7 @@ _INCIDENTS_SQL = sql.SQL("""
         lon
     from {schema}.mart_incident_conditions
     where route_id = any(%(route_ids)s)
+      and event_time >= now() - interval '90 days'
     order by event_time desc
     limit %(limit)s
 """)
